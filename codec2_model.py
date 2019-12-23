@@ -37,8 +37,8 @@ def read(filename, max_nb_samples=1E32):
 
     Wo = np.zeros(nb_samples)
     L = np.zeros(nb_samples, dtype=int)
-    A = np.zeros((nb_samples, width))
-    phi = np.zeros((nb_samples, width))
+    A = np.zeros((nb_samples, max_amp+1))
+    phi = np.zeros((nb_samples, max_amp+1))
     voiced = np.zeros(nb_samples, dtype=int)
 
     # Read Codec 2 model records into numpy arrays for further work

@@ -1,2 +1,2 @@
-# ampnn
-Amplitude Modelling using Neural Nets
+# Amplitude Sample Rate Conversion Using Neural Nets
+
