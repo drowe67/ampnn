@@ -8,8 +8,8 @@
 # using small dimension vectors that will be easier to quantise.
 
 '''
-  usage: ./src/c2sim ~/Downloads/train_8k.sw --modelout ~/phasenn/train_8k.model --bands ~/phasenn/train_8k.f32
-         ./eband_train.py train_8k.f32 train_8k.model --epochs 10
+  usage: ./src/c2sim ~/Downloads/all_speech_8k.sw --bands ~/ampnn/all_speech_8k.f32 --modelout ~/ampnn/all_speech_8k.model 
+         ./eband_train.py all_speech_8k.f32 all_speech_8k.model --epochs 10
 '''
 
 import numpy as np

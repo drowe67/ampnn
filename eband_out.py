@@ -44,6 +44,7 @@ parser.add_argument('--modelout', help='Ouput Codec 2 model records with reconst
 parser.add_argument('--frames', type=list_str, default="30,31,32,33,34,35", help='Frames to view')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
+parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 args = parser.parse_args()
 
 eband_K = args.eband_K
@@ -112,6 +113,9 @@ def sample_time(r, A):
 frames = np.array(args.frames,dtype=int)
 nb_plots = frames.size
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
+
+if args.noplots:
+    sys.exit(0)
 
 plt.figure(2)
 plt.title('Amplitudes Spectra')
