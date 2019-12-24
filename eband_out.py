@@ -96,8 +96,6 @@ for i in range(nb_samples):
 print("var1: %3.2f var2: %3.2f (dB*dB)" % (e1/n,np.mean(error)))
       
 # save to output model file for synthesis
-print(A.shape, A_est.shape)
-#exit()
 if args.modelout:
     codec2_model.write(Wo, L, A_est, phase, voiced, args.modelout)
 

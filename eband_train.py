@@ -48,6 +48,8 @@ parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of f
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--nnout', type=str, default="ampnn.h5", help='Name of output NN we have trained')
+parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
+parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
 args = parser.parse_args()
 assert nb_plots == len(args.frames)
 
@@ -61,12 +63,12 @@ print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
 
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32')
-nb_features = default_eband_K
+nb_features = eband_K
 nb_samples1 = len(features)/nb_features
 print("nb_samples1: %d" % (nb_samples1))
 assert nb_samples == nb_samples1
 features = np.reshape(features, (nb_samples, nb_features))
-rateK = features[:,args.eband_start:args.eband_start+eband_K]
+rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 print(rateK.shape)
 
 # find and subtract mean for each frame
@@ -133,7 +135,8 @@ for i in range(nb_samples):
     error[i] = e2/L[i]
 # mean of error squared is actually the variance
 print("var1: %3.2f var2: %3.2f (dB*dB)" % (e1/n,np.mean(error)))
-      
+print("%4.2f" % (e1/n))
+
 # synthesise time domain signal
 def sample_time(r, A):
     s = np.zeros(2*N);
@@ -143,6 +146,8 @@ def sample_time(r, A):
 
 # plot results
 
+if args.noplots:
+    sys.exit(0)
 frames = np.array(args.frames,dtype=int)
 nb_plots = frames.size
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
