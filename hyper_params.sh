@@ -6,10 +6,6 @@
 # as K and #VQ entries.  Note we're not actually messing with NN
 # hyper-parms (yet).
 
-# TODO
-#   [ ] output NN file, we can then use synth.sh to listen
-#   [ ] output synth files
-
 PATH=$PATH:~/codec2/build_linux/src:$PATH:~/codec2/build_linux/misc
 
 
@@ -27,7 +23,7 @@ gain=10            # gives us dB from log10(band energys)
 epochs=25
 vq_stop=1E-3       # VQ training stop criterion
 
-N=7                # number of trials
+N=7                                      # number of trials
 
 K_st=(  0    0    0    0    2    2    2) # start of slice
 K_en=( 13   13   13   13   13   13   13) # end of slice
@@ -57,9 +53,9 @@ do
     train1=$res_dir/$i_'train1.f32'            # stage1 VQ residual/stage 2 VQ input
     train2=$res_dir/$i_'train2.f32'
     quantised=$res_dir/$id_'quantised.f32'     # VQ quantised version of train0
-    tmp=$res_dir/$i_'tmp.txt'
-    vq1=$res_dir/$i_'vq1.f32'                  # stage1 VQ table
-    vq2=$res_dir/$i_'vq2.f32'                  # stage2 VQ table
+    tmp=$res_dir/$i'_tmp.txt'
+    vq1=$res_dir/$i'_vq1.f32'                  # stage1 VQ table
+    vq2=$res_dir/$i'_vq2.f32'                  # stage2 VQ table
     nn=$res_dir/$i'_nn.h5'                     # eband NN trained from $train0
     nnvq=$res_dir/$i'_nnvq.h5'                 # eband NN trained from $quantised
     
@@ -84,16 +80,20 @@ do
     fi
     printf "%4.2f\t" `tail -n1 $tmp` >> $results
     
-    # TODO evaulate previous NN on quantised output
+    # Evaulate previous NN on quantised output
     ./eband_out.py $nn $quantised $f'.model' --eband_K $K --noplots --gain $gain > $tmp
     printf "%4.2f\t" `tail -n1 $tmp` >> $results
     
-    # Train NN on quantised output of VQ
+    # Train new NN on quantised output of VQ
     ./eband_train.py $quantised $f'.model' --eband_K $K --epochs $epochs --noplots --nnout $nnvq --gain $gain > $tmp
     printf "%4.2f\n" `tail -n1 $tmp` >> $results
     
     # Synthesise output
-    #./synth.sh $res_dir/$i'_wav' $nnvq
+    if  [ "${M2[i]}" -eq 0 ]; then
+	./synth.sh $res_dir/$i'_wav' $nnvq ${K_st[i]} ${K_en[i]} $vq1
+    else
+	./synth.sh $res_dir/$i'_wav' $nnvq ${K_st[i]} ${K_en[i]} $vq1 $vq2
+    fi
 done
 
 # TODO plot PNG with hyper param results
