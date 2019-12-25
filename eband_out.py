@@ -45,6 +45,7 @@ parser.add_argument('--frames', type=list_str, default="30,31,32,33,34,35", help
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
+parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
 args = parser.parse_args()
 
 eband_K = args.eband_K
@@ -58,12 +59,12 @@ print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
 
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32')
-nb_features = default_eband_K
+nb_features = eband_K
 nb_samples1 = len(features)/nb_features
 print("nb_samples1: %d" % (nb_samples1))
 assert nb_samples == nb_samples1
 features = np.reshape(features, (nb_samples, nb_features))
-rateK = features[:,args.eband_start:args.eband_start+eband_K]
+rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
 # our model
 model = models.Sequential()
@@ -94,6 +95,7 @@ for i in range(nb_samples):
 
 # mean of error squared is actually the variance
 print("var1: %3.2f var2: %3.2f (dB*dB)" % (e1/n,np.mean(error)))
+print("%4.2f" % (e1/n))
       
 # save to output model file for synthesis
 if args.modelout:
