@@ -50,6 +50,7 @@ parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length
 parser.add_argument('--nnout', type=str, default="ampnn.h5", help='Name of output NN we have trained')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
+parser.add_argument('--removemean', action='store_true', help='remove mean from eband and Am vectors')
 args = parser.parse_args()
 assert nb_plots == len(args.frames)
 
@@ -60,7 +61,7 @@ Wo, L, A, phase, voiced = codec2_model.read(args.modelfile, args.nb_samples)
 nb_samples = Wo.size;
 nb_voiced = np.count_nonzero(voiced)
 print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
-
+    
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32')
 nb_features = eband_K
@@ -69,20 +70,26 @@ print("nb_samples1: %d" % (nb_samples1))
 assert nb_samples == nb_samples1
 features = np.reshape(features, (nb_samples, nb_features))
 rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
-print(rateK.shape)
 
-# find and subtract mean for each frame
-mean_amp = np.zeros(nb_samples)
-for i in range(nb_samples):
-    mean_amp[i] = np.mean(np.log10(A[i,1:L[i]+1]))
+mean_log10A = np.zeros(nb_samples)
+mean_rateK = np.zeros(nb_samples)
+if args.removemean:
+    for i in range(nb_samples):
+        mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
+        mean_rateK[i] = np.mean(rateK[i,:])
+        rateK[i,:] = rateK[i,:] - mean_rateK[i]
+
+# TODO - investigate normalisation of std
+#rateK_std = np.std(rateK, axis=0)
+#print(rateK_std.shape, rateK_std)
+#rateK /= rateK_std
 
 # set up sparse amp output vectors
 amp_sparse = np.zeros((nb_samples, width))
 for i in range(nb_samples):
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
-        #amp_sparse[i,bin] = np.log10(A[i,m]) - mean_amp[i]
-        amp_sparse[i,bin] = np.log10(A[i,m])
+        amp_sparse[i,bin] = np.log10(A[i,m]) - mean_log10A[i]
 
 # our model
 model = models.Sequential()
@@ -166,7 +173,7 @@ for r in range(nb_plots):
     plt.subplot(nb_plotsy,nb_plotsx,r+1)
     f = int(frames[r]);
     plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
-    plt.plot(20*amp_est[f,1:L[f]+1],'r')
+    plt.plot(20*(amp_est[f,1:L[f]+1]+mean_log10A[f]),'r')
     ef = np.var(20*np.log10(A[f,1:L[f]+1])-20*amp_est[f,1:L[f]+1])
     t = "f: %d %3.1f" % (f, ef)
     plt.title(t)
@@ -179,7 +186,7 @@ for r in range(nb_plots):
     plt.subplot(nb_plotsy,nb_plotsx,r+1)
     f = int(frames[r]);
     s = sample_time(f, A[f,:])
-    A_est = 10**(amp_est[f,:])
+    A_est = 10**(amp_est[f,:]+mean_log10A[f])
     s_est = sample_time(f, A_est)
     plt.plot(range(-N,N),s,'g')
     plt.plot(range(-N,N),s_est,'r') 
