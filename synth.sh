@@ -23,6 +23,10 @@ else
     K_st=0
     K_en=13
 fi
+
+# pass $LOWER in via an env var
+LOWER=${LOWER:-100}
+
 K=$(python -c "print(int(${K_en[i]}-${K_st[i]}+1))")
 
 mkdir -p $out_dir
@@ -42,7 +46,7 @@ do
     c2sim wav/$s.sw --bands $bands --modelout $modelin
     extract -s $K_st -e $K_en -t $maxK $bands $bands_slice -g $gain
 
-    ./eband_out.py $nn $bands_slice $modelin --modelout $modelout --eband_K $K --noplots --gain $gain
+    ./eband_out.py $nn $bands_slice $modelin --modelout $modelout --eband_K $K --noplots --gain $gain --removemean
        
     c2sim wav/$s.sw -o - | sox $sox_args - $out_dir/$s'_0_out.wav'
     c2sim wav/$s.sw -o - --phase0 --postfilter | sox $sox_args - $out_dir/$s'_1_p0.wav'
@@ -51,15 +55,15 @@ do
 
     # optional one stage VQ
     if [ "$#" -eq 5 ]; then
-	cat $bands_slice | vq_mbest -k $K -q $5 -m 1 > $bands_quantised
+	cat $bands_slice | vq_mbest -k $K -q $5 -m 1 --lower $LOWER > $bands_quantised
     fi
     # optional two stage VQ
     if [ "$#" -eq 6 ]; then
-	cat $bands_slice | vq_mbest -k $K -q $5,$6 -m 4 > $bands_quantised
+	cat $bands_slice | vq_mbest -k $K -q $5,$6 -m 4 --lower $LOWER > $bands_quantised
     fi
     
     if [ "$#" -ge 5 ]; then
-	./eband_out.py $nn $bands_quantised $modelin --modelout $modelout_quantised --eband_K $K --noplots --gain $gain
+	./eband_out.py $nn $bands_quantised $modelin --modelout $modelout_quantised --eband_K $K --noplots --gain $gain --removemean
 	c2sim wav/$s.sw --modelin $modelout_quantised -o - --phase0 --postfilter | sox $sox_args - $out_dir/$s'_4_nnqp0.wav'
     fi
 done

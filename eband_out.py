@@ -46,6 +46,7 @@ parser.add_argument('--eband_start', type=int, default=0, help='Start element of
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
+parser.add_argument('--removemean', action='store_true', help='remove mean from eband and Am vectors')
 args = parser.parse_args()
 
 eband_K = args.eband_K
@@ -66,6 +67,15 @@ assert nb_samples == nb_samples1
 features = np.reshape(features, (nb_samples, nb_features))
 rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
+# remove means
+mean_log10A = np.zeros(nb_samples)
+mean_rateK = np.zeros(nb_samples)
+if args.removemean:
+    for i in range(nb_samples):
+        mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
+        mean_rateK[i] = np.mean(rateK[i,:])
+        rateK[i,:] = rateK[i,:] - mean_rateK[i]
+        
 # our model
 model = models.Sequential()
 model.add(layers.Dense(2*eband_K, activation='relu', input_dim=eband_K))
@@ -88,8 +98,8 @@ for i in range(nb_samples):
     e2 = 0;
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
-        A_est[i,m] = 10 ** amp_sparse_est[i,bin]
-        e = (20*amp_sparse_est[i,bin] - 20*np.log10(A[i,m])) ** 2
+        A_est[i,m] = 10 ** (amp_sparse_est[i,bin]+mean_log10A[i])
+        e = (20*(amp_sparse_est[i,bin] + mean_log10A[i]) - 20*np.log10(A[i,m])) ** 2
         n+=1; e1 += e; e2 += e;
     error[i] = e2/L[i]
 
