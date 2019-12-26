@@ -9,7 +9,7 @@ PATH=$PATH:~/codec2/build_linux/src:$PATH:~/codec2/build_linux/misc
 
 if [ "$#" -lt 2 ]; then
     echo "usage: ./vq_train.sh train_prefix results_dir"
-    echo "       ./hyper_params.sh all_speech_8k 191215"
+    echo "       ./vq_train.sh all_speech_8k 191215"
     exit 0
 else
     f=$1
@@ -20,20 +20,22 @@ maxK=14            # c2sim extracts vectors this wide
 gain=10            # gives us dB from log10(band energys)
 vq_stop=1E-3       # VQ training stop criterion
 
-N=6                                      # number of trials
+N=5                # number of trials
 
-K_st=(  2    2    2    2    2    2 ) # start of slice
-K_en=( 13   13   13   13   13   13 ) # end of slice
-M0=(    0    0    0    1    0    1 ) # mean removal flag
-M1=(  512  512 1024 1024 2048 2048 ) # number of VQ levels (same each stage)
-M2=(  512  512 1024 1024 2048 2048 ) # number of VQ levels (same each stage)
-      
+K_st=(  2    2    2    2    2) # start of slice
+K_en=( 13   13   13   13   13) # end of slice
+M0=(    0    0    0    0    0) # mean removal flag
+M1=(  512  512  512  512 2048) # number of VQ levels (same each stage)
+M2=(  512  512  512  512 2048) # number of VQ levels (same each stage)
+L=(   -10    0    1    2    2) # lower limit of samples to use
+
 echo ${#K_st[@]}
 if [ ${#K_st[@]} -lt $N ]; then echo "K_st wrong length"; exit 1; fi
 if [ ${#K_en[@]} -lt $N ]; then echo "K_en wrong length"; exit 1; fi
 if [ ${#M0[@]} -lt $N ]; then echo "M0 wrong length"; exit 1; fi
 if [ ${#M1[@]} -lt $N ]; then echo "M1 wrong length"; exit 1; fi
 if [ ${#M2[@]} -lt $N ]; then echo "M2 wrong length"; exit 1; fi
+if [ ${#L[@]} -lt $N ]; then echo "L wrong length"; exit 1; fi
 
 mkdir -p $res_dir
 results=$res_dir/results.txt
@@ -45,7 +47,7 @@ do
     printf "================= Starting Iteration %d ===============\n" $i
 
     K=$(python -c "print(int(${K_en[i]}-${K_st[i]}+1))")
-    printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t" $i $K ${K_st[i]} ${K_en[i]} ${M0[i]} ${M1[i]} ${M2[i]} >> $results
+    printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%3.1f\t" $i $K ${K_st[i]} ${K_en[i]} ${M0[i]} ${M1[i]} ${M2[i]} ${L[i]} >> $results
 
     # bunch of intermediate files
     train0=$res_dir/$i'_train0.f32'            # input rate K to VQ/NN training
@@ -57,9 +59,9 @@ do
     vq2=$res_dir/$i'_vq2.f32'                  # stage2 VQ table
     
     if [ "${M0[i]}" -eq 1 ]; then
-	extract -s ${K_st[i]} -e ${K_en[i]} -t $maxK $f'.f32' $train0 -g $gain --removemean
+	extract -s ${K_st[i]} -e ${K_en[i]} -t $maxK $f'.f32' $train0 -g $gain --removemean --lower ${L[i]}
     else
-	extract -s ${K_st[i]} -e ${K_en[i]} -t $maxK $f'.f32' $train0 -g $gain
+	extract -s ${K_st[i]} -e ${K_en[i]} -t $maxK $f'.f32' $train0 -g $gain --lower ${L[i]}
     fi
     
     vqtrain -s $vq_stop -r $train1 $train0 $K ${M1[i]} $vq1
