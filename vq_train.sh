@@ -20,14 +20,14 @@ maxK=14            # c2sim extracts vectors this wide
 gain=10            # gives us dB from log10(band energys)
 vq_stop=1E-3       # VQ training stop criterion
 
-N=5                # number of trials
+N=3                # number of trials
 
-K_st=(  2    2    2    2    2) # start of slice
-K_en=( 13   13   13   13   13) # end of slice
-M0=(    0    0    0    0    0) # mean removal flag
-M1=(  512  512  512  512 2048) # number of VQ levels (same each stage)
-M2=(  512  512  512  512 2048) # number of VQ levels (same each stage)
-L=(   -10    0    1    2    2) # lower limit of samples to use
+K_st=(  2    1    2) # start of slice
+K_en=( 13   12   12) # end of slice
+M0=(    0    0    0) # mean removal flag
+M1=(  512  512  512) # number of VQ levels (same each stage)
+M2=(  512  512  512) # number of VQ levels (same each stage)
+L=(     1    1    1) # lower limit of samples to use
 
 echo ${#K_st[@]}
 if [ ${#K_st[@]} -lt $N ]; then echo "K_st wrong length"; exit 1; fi
