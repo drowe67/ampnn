@@ -31,8 +31,10 @@ K=$(python -c "print(int(${K_en[i]}-${K_st[i]}+1))")
 
 mkdir -p $out_dir
 tmp_dir=$(mktemp -d)
-ls $tmp_dir
 sox_args="-t .sw -r 8000 -c 1"
+results=$out_dir/zzresults.txt
+
+printf "sample\tK\tK_st\tK_en\tNNuq\tVQ\tNNvq\n" > $results
 
 for s in $SAMPLES
 do
@@ -43,11 +45,16 @@ do
     modelin=$tmp_dir/$s'.model'
     modelout=$tmp_dir/$s'_out.model'
     modelout_quantised=$tmp_dir/$s'_out_quantised.model'
+    tmp=$tmp_dir/tmp.txt
+    
+    printf "%.6s\t%d\t%d\t%d\t" $s $K $K_st $K_en >> $results
+
     c2sim wav/$s.sw --bands $bands --modelout $modelin
     extract -s $K_st -e $K_en -t $maxK $bands $bands_slice -g $gain
 
-    ./eband_out.py $nn $bands_slice $modelin --modelout $modelout --eband_K $K --noplots --gain $gain --removemean
-       
+    ./eband_out.py $nn $bands_slice $modelin --modelout $modelout --eband_K $K --noplots --gain $gain --removemean >$tmp
+    printf "%4.2f\t" `tail -n1 $tmp` >> $results
+    
     c2sim wav/$s.sw -o - | sox $sox_args - $out_dir/$s'_0_out.wav'
     c2sim wav/$s.sw -o - --phase0 --postfilter | sox $sox_args - $out_dir/$s'_1_p0.wav'
     c2sim wav/$s.sw --modelin $modelout -o - | sox $sox_args - $out_dir/$s'_2_nn.wav'
@@ -55,16 +62,19 @@ do
 
     # optional one stage VQ
     if [ "$#" -eq 5 ]; then
-	cat $bands_slice | vq_mbest -k $K -q $5 -m 1 --lower $LOWER > $bands_quantised
+	cat $bands_slice | vq_mbest -k $K -q $5 -m 1 --lower $LOWER > $bands_quantised 2>$tmp
     fi
     # optional two stage VQ
     if [ "$#" -eq 6 ]; then
-	cat $bands_slice | vq_mbest -k $K -q $5,$6 -m 4 --lower $LOWER > $bands_quantised
+	cat $bands_slice | vq_mbest -k $K -q $5,$6 -m 4 --lower $LOWER > $bands_quantised 2>$tmp
     fi
+    printf "%4.2f\t" `tail -n1 $tmp` >> $results
     
     if [ "$#" -ge 5 ]; then
-	./eband_out.py $nn $bands_quantised $modelin --modelout $modelout_quantised --eband_K $K --noplots --gain $gain --removemean
+	./eband_out.py $nn $bands_quantised $modelin --modelout $modelout_quantised --eband_K $K --noplots --gain $gain --removemean > $tmp
 	c2sim wav/$s.sw --modelin $modelout_quantised -o - --phase0 --postfilter | sox $sox_args - $out_dir/$s'_4_nnqp0.wav'
+	printf "%4.2f\n" `tail -n1 $tmp` >> $results
     fi
+    
 done
 
