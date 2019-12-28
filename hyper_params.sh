@@ -23,13 +23,13 @@ gain=10            # gives us dB from log10(band energys)
 epochs=25
 vq_stop=1E-3       # VQ training stop criterion
 
-N=5                # number of trials
+N=4                # number of trials
 
-K_st=(  0    1    2    2    1) # start of slice
-K_en=( 13   12   13   12   12) # end of slice
-M1=(  512  512  512  512 4096) # number of VQ levels (same each stage)
-M2=(  512  512  512  512    0) # number of VQ levels (same each stage)
-L=(     1    1    1    1    1) # lower log10(e) limit of samples to use
+K_st=(  0    1    2     1) # start of slice
+K_en=( 13   13   12    13) # end of slice
+M1=(  512  512  512  4096) # number of VQ levels (same each stage)
+M2=(  512  512  512     0) # number of VQ levels (same each stage)
+L=(     1    1    1     1) # lower log10(e) limit of samples to use for VQ training
 
 echo ${#K_st[@]}
 if [ ${#K_st[@]} -lt $N ]; then echo "K_st wrong length"; exit 1; fi
@@ -43,7 +43,7 @@ results=$res_dir/results.txt
 printf "i\tK\tK_st\tK_en\tM1\tM2\tNNuq\tVQ\tNNvq\n" > $results
 
 N_1=$(python -c "print(int($N-1))")
-for i in $( seq 0 $N_1 )
+for i in $( seq 3 $N_1 )
 do
     printf "================= Starting Iteration %d ===============\n" $i
 
@@ -65,7 +65,7 @@ do
     extract -s ${K_st[i]} -e ${K_en[i]} -t $maxK $f'.f32' $bands_slice -g $gain
     ./eband_train.py $bands_slice $f'.model' --eband_K $K --epochs $epochs --nnout $nn --noplots --gain $gain --removemean > $tmp
     printf "%4.2f\t" `tail -n1 $tmp` >> $results
-    
+     
     # train a VQ
     extract -s ${K_st[i]} -e ${K_en[i]} -t $maxK $f'.f32' $train0 -g $gain --lower ${L[i]}
     vqtrain -s $vq_stop -r $train1 $train0 $K ${M1[i]} $vq1
@@ -76,9 +76,9 @@ do
     # VQ our training database to get quantised vectors and measure VQ error
     lower=$(python -c "print(int(${L[i]}*$gain))")
     if  [ "${M2[i]}" -ne 0 ]; then
-	cat $bands_slice | vq_mbest -k $K -q $vq1,$vq2 -m 4 > $quantised --lower $lower 2>$tmp
+	cat $bands_slice | vq_mbest -k $K -q $vq1,$vq2 -m 4 --lower $lower > $quantised 2>$tmp
     else
-	cat $bands_slice | vq_mbest -k $K -q $vq1 -m 1 > $quantised --lower $lower 2>$tmp
+	cat $bands_slice | vq_mbest -k $K -q $vq1 -m 1 --lower $lower > $quantised --lower $lower 2>$tmp
     fi
     printf "%4.2f\t" `tail -n1 $tmp` >> $results
     

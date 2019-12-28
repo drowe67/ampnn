@@ -3,7 +3,7 @@
 #
 # David Rowe Dec 2019
 #
-# Train a NN to model to transform rate K=14 LPCnet style eband vectors
+# Train a NN to model to transform rate K=14 LPCNet style eband vectors
 # to rate L {Am} samples.  See if we can get better speech quality
 # using small dimension vectors that will be easier to quantise.
 
@@ -35,6 +35,8 @@ default_eband_K   = 14
 max_amp           = 160 
 nb_plots          = 6
 N                 = 80
+Fs                = 8000
+Fcutoff           = 3600
 
 def list_str(values):
     return values.split(',')
@@ -43,7 +45,7 @@ parser = argparse.ArgumentParser(description='Train a NN to decode eband rate K 
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('modelfile', help='Codec 2 model records with rate L vectors')
 parser.add_argument('--frames', type=list_str, default="30,31,32,33,34,35", help='Frames to view')
-parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
+parser.add_argument('--epochs', type=int, default=25, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
@@ -61,7 +63,13 @@ Wo, L, A, phase, voiced = codec2_model.read(args.modelfile, args.nb_samples)
 nb_samples = Wo.size;
 nb_voiced = np.count_nonzero(voiced)
 print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
-    
+
+# Avoid harmonics above Fcutoff, as anti-alising filters tend to
+# produce very small values that don't affect speech but contribute
+# greatly to error
+for f in range(nb_samples):
+    L[f] = round(L[f]*Fcutoff/(Fs/2))
+
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32')
 nb_features = eband_K

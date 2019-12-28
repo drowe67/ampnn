@@ -40,7 +40,7 @@ while loop and (offset < M):
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         plt.plot(vq[offset+r,:])
-        plt.ylim(0,60)
+        plt.ylim(-20,20)
         plt.show(block=False)
 
     print("[%d .. %d] Any key for next page, click to finish...." % (offset, offset+nb_plots))

@@ -32,6 +32,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 width             = 128
 default_eband_K   = 14
 N                 = 80
+Fs                = 8000
+Fcutoff           = 3600
 
 def list_str(values):
     return values.split(',')
@@ -41,7 +43,7 @@ parser.add_argument('ampnn', help='amp NN trained .h5 file')
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('modelin', help='Input Codec 2 model records')
 parser.add_argument('--modelout', help='Ouput Codec 2 model records with reconstructed rate L vectors')
-parser.add_argument('--frames', type=list_str, default="30,31,32,33,34,35", help='Frames to view')
+parser.add_argument('--frame', type=int, default="1", help='start frames to view')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
@@ -57,6 +59,10 @@ print(A.shape, Wo.shape)
 nb_samples = Wo.size;
 nb_voiced = np.count_nonzero(voiced)
 print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
+
+# remove HF, very low amplitude samples that skew results
+for f in range(nb_samples):
+    L[f] = round(L[f]*Fcutoff/(Fs/2))
 
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32')
@@ -120,42 +126,52 @@ def sample_time(r, A):
 
 # plot results
 
-frames = np.array(args.frames,dtype=int)
-nb_plots = frames.size
+frame = np.array(args.frame,dtype=int)
+nb_plots = 6
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
 
 if args.noplots:
     sys.exit(0)
 
-plt.figure(2)
-plt.title('Amplitudes Spectra')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = int(frames[r]);
-    plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
-    plt.plot(20*np.log10(A_est[f,1:L[f]+1]),'r')
-    ef = np.var(20*np.log10(A[f,1:L[f]+1]) - 20*np.log10(A_est[f,1:L[f]+1]) )
-    t = "f: %d %3.1f" % (f, ef)
-    plt.title(t)
-    plt.ylim(20,80)
-plt.show(block=False)
-
-plt.figure(3)
-plt.title('Time Domain')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = int(frames[r]);
-    s = sample_time(f, A[f,:])
-    s_est = sample_time(f, A_est[f,:])
-    plt.plot(range(-N,N),s,'g')
-    plt.plot(range(-N,N),s_est,'r') 
-plt.show(block=False)
-
-plt.figure(4)
+plt.figure(1)
 plt.title('Histogram of mean error squared per frame')
 plt.hist(error,20)
 plt.show(block=False)
 
-print("Click on last figure to finish....")
-plt.waitforbuttonpress(0)
+# ebands:
+# 0 200 400 600 800 1k 1.2 1.4 1.6 2k 2.4 2.8 3.2 4k 4.8 5.6 6.8 8k
+
+print("Press any key for next page, click on last figure to finish....")
+loop=True
+while loop and frame < nb_samples:
+    plt.figure(2)
+    plt.clf()
+    plt.title('Amplitudes Spectra')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frame+r;
+        plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
+        plt.plot(20*np.log10(A_est[f,1:L[f]+1]),'r')
+        ef = np.var(20*np.log10(A[f,1:L[f]+1]) - 20*np.log10(A_est[f,1:L[f]+1]) )
+        t = "f: %d %3.1f" % (f, ef)
+        plt.title(t)
+        plt.ylim(0,80)
+        #print(f,4000*Wo[f]*(L[f])/np.pi)
+    plt.show(block=False)
+
+    plt.figure(3)
+    plt.clf()
+    plt.title('Time Domain')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frame+r;
+        s = sample_time(f, A[f,:])
+        s_est = sample_time(f, A_est[f,:])
+        plt.plot(range(-N,N),s,'g')
+        plt.plot(range(-N,N),s_est,'r') 
+    plt.show(block=False)
+
+    loop=plt.waitforbuttonpress(0)
+    frame+=nb_plots
+   
 plt.close()
