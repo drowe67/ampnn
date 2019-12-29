@@ -49,7 +49,7 @@ def list_str(values):
 parser = argparse.ArgumentParser(description='Train a NN to decode eband rate K -> rate L')
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('modelfile', help='Codec 2 model records with rate L vectors')
-parser.add_argument('--frames', type=list_str, default="30,31,32,33,34,35", help='Frames to view')
+parser.add_argument('--frame', type=int, default=30, help='start frames to view')
 parser.add_argument('--epochs', type=int, default=25, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
@@ -60,7 +60,6 @@ parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eb
 parser.add_argument('--dec', type=int, default=2, help='decimation rate to simulate')
 
 args = parser.parse_args()
-assert nb_plots == len(args.frames)
 
 dec = args.dec
 assert dec != 1
@@ -115,10 +114,16 @@ for i in range(0, nb_samples-dec):
     
 # our model
 model = models.Sequential()
-model.add(layers.Dense(dec*eband_K, activation='relu', input_dim=2*eband_K))
-model.add(layers.Dense(dec*eband_K, activation='relu'))
-model.add(layers.Dense(2*dec*width, activation='relu'))
-model.add(layers.Dense(dec*width))
+cand = 2
+if cand == 1:
+    model.add(layers.Dense(dec*eband_K, activation='relu', input_dim=2*eband_K))
+    model.add(layers.Dense(dec*eband_K, activation='relu'))
+    model.add(layers.Dense(2*dec*width, activation='relu', input_dim=2*eband_K))
+    model.add(layers.Dense(dec*width))
+
+if cand == 2:
+    model.add(layers.Dense(dec*width, activation='relu', input_dim=2*eband_K))
+    model.add(layers.Dense(dec*width))
 model.summary()
 
 # custom loss function - we only care about outputs at the non-zero
@@ -152,7 +157,7 @@ amp_sparse_est = model.predict(rateKdec)
 # training, we step through in dec steps to simulate real world
 # operation
 
-amp_est = np.zeros((nb_samples,width))
+amp_est = np.zeros((nb_samples,max_amp))
 error = np.zeros(nb_samples)
 e1 = 0; n = 0;
 for i in range(0,nb_samples-dec,dec):
@@ -178,9 +183,8 @@ def sample_time(r, A):
 
 if args.noplots:
     sys.exit(0)
-frames = np.array(args.frames,dtype=int)
-nb_plots = frames.size
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
+frame=args.frame
 
 plt.figure(1)
 plt.plot(history.history['loss'])
@@ -191,35 +195,40 @@ plt.xlabel('epoch')
 plt.show(block=False)
 
 plt.figure(2)
-plt.title('Amplitudes Spectra')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = int(frames[r]);
-    plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
-    plt.plot(20*(amp_est[f,1:L[f]+1]+mean_log10A[f]),'r')
-    ef = np.var(20*np.log10(A[f,1:L[f]+1])-20*amp_est[f,1:L[f]+1])
-    t = "f: %d %3.1f" % (f, ef)
-    plt.title(t)
-    plt.ylim(20,80)
-plt.show(block=False)
-
-plt.figure(3)
-plt.title('Time Domain')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = int(frames[r]);
-    s = sample_time(f, A[f,:])
-    A_est = 10**(amp_est[f,:]+mean_log10A[f])
-    s_est = sample_time(f, A_est)
-    plt.plot(range(-N,N),s,'g')
-    plt.plot(range(-N,N),s_est,'r') 
-plt.show(block=False)
-
-plt.figure(4)
 plt.title('Histogram of mean error squared per frame')
 plt.hist(error,20)
 plt.show(block=False)
 
-print("Click on last figure to finish....")
-plt.waitforbuttonpress(0)
+print("Press any key for next page. Click on last figure to finish....")
+loop=True
+while loop:
+    plt.figure(3)
+    plt.clf()
+    plt.title('Amplitudes Spectra')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frame+r;
+        plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
+        plt.plot(20*(amp_est[f,1:L[f]+1]+mean_log10A[f]),'r')
+        ef = np.var(20*np.log10(A[f,1:L[f]+1])-20*amp_est[f,1:L[f]+1])
+        t = "f: %d %3.1f" % (f, ef)
+        plt.title(t)
+        plt.ylim(20,80)
+    plt.show(block=False)
+
+    plt.figure(4)
+    plt.clf()
+    plt.title('Time Domain')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frame+r;
+        s = sample_time(f, A[f,:])
+        A_est = 10**(amp_est[f,:]+mean_log10A[f])
+        s_est = sample_time(f, A_est)
+        plt.plot(range(-N,N),s,'g')
+        plt.plot(range(-N,N),s_est,'r') 
+    plt.show(block=False)
+
+    loop = plt.waitforbuttonpress(0)
+    frame += nb_plots
 plt.close()
