@@ -57,7 +57,6 @@ parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length
 parser.add_argument('--nnout', type=str, default="ampnn.h5", help='Name of output NN we have trained')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
-parser.add_argument('--removemean', action='store_true', help='remove mean from eband and Am vectors')
 parser.add_argument('--dec', type=int, default=2, help='decimation rate to simulate')
 
 args = parser.parse_args()
@@ -80,7 +79,7 @@ for f in range(nb_samples):
     L[f] = round(L[f]*Fcutoff/(Fs/2))
 
 # read in rate K vectors
-features = np.fromfile(args.featurefile, dtype='float32')
+features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
 nb_features = eband_K
 nb_samples1 = len(features)/nb_features
 print("nb_samples1: %d" % (nb_samples1))
@@ -90,11 +89,10 @@ rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
 mean_log10A = np.zeros(nb_samples)
 mean_rateK = np.zeros(nb_samples)
-if args.removemean:
-    for i in range(nb_samples):
-        mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
-        mean_rateK[i] = np.mean(rateK[i,:])
-        rateK[i,:] = rateK[i,:] - mean_rateK[i]
+for i in range(nb_samples):
+    mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
+    mean_rateK[i] = np.mean(rateK[i,:])
+    rateK[i,:] = rateK[i,:] - mean_rateK[i]
 
 # set up sparse amp output vectors
 amp_sparse = np.zeros((nb_samples, width))
@@ -106,20 +104,20 @@ for i in range(nb_samples):
 # reshape to simulate decimation/interpolation, we overlap here to get more traiing data
 
 rateKdec = np.zeros((nb_samples-dec, 2*eband_K))
-for i in range(dec,nb_samples):
-    rateKdec[i-dec,:eband_K] = rateK[i-dec,:]
-    rateKdec[i-dec,eband_K:] = rateK[i,:]
+for i in range(nb_samples-dec):
+    rateKdec[i,:eband_K] = rateK[i,:]
+    rateKdec[i,eband_K:] = rateK[i+dec,:]
 amp_sparsedec = np.zeros((nb_samples-dec, dec*width))
-for i in range(dec, nb_samples):
+for i in range(0, nb_samples-dec):
     for d in range(dec):
         st = d*width
-        amp_sparsedec[i-dec,st:st+width] = amp_sparse[i-d,:]
+        amp_sparsedec[i,st:st+width] = amp_sparse[i+d,:]
     
 # our model
 model = models.Sequential()
-model.add(layers.Dense(2*eband_K, activation='relu', input_dim=2*eband_K))
-model.add(layers.Dense(2*eband_K, activation='relu'))
-model.add(layers.Dense(dec*width, activation='relu'))
+model.add(layers.Dense(dec*eband_K, activation='relu', input_dim=2*eband_K))
+model.add(layers.Dense(dec*eband_K, activation='relu'))
+model.add(layers.Dense(2*dec*width, activation='relu'))
 model.add(layers.Dense(dec*width))
 model.summary()
 
@@ -151,7 +149,7 @@ model.save(args.nnout)
 amp_sparse_est = model.predict(rateKdec)
 
 # Extract amplitudes from sparse vector and estimate error.  Unlike
-# training, we step through in dec setps to simulate real world
+# training, we step through in dec steps to simulate real world
 # operation
 
 amp_est = np.zeros((nb_samples,width))
