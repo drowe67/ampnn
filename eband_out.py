@@ -48,7 +48,6 @@ parser.add_argument('--eband_start', type=int, default=0, help='Start element of
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
-parser.add_argument('--removemean', action='store_true', help='remove mean from eband and Am vectors')
 args = parser.parse_args()
 
 eband_K = args.eband_K
@@ -67,20 +66,23 @@ for f in range(nb_samples):
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32')
 nb_features = eband_K
-nb_samples1 = len(features)/nb_features
-print("nb_samples1: %d" % (nb_samples1))
-assert nb_samples == nb_samples1
-features = np.reshape(features, (nb_samples, nb_features))
+nb_samples1 = int(len(features)/nb_features)
+features = np.reshape(features, (nb_samples1, nb_features))
+if nb_samples > nb_samples1:
+    print("warning nb_samples: %d nb_samples1: %d, padding" % (nb_samples, nb_samples1))
+    pad=np.zeros((nb_samples - nb_samples1, eband_K))
+    print(features.shape, pad.shape)
+    features=np.concatenate((features, pad))
+print(features.shape)
 rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
 # remove means
 mean_log10A = np.zeros(nb_samples)
 mean_rateK = np.zeros(nb_samples)
-if args.removemean:
-    for i in range(nb_samples):
-        mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
-        mean_rateK[i] = np.mean(rateK[i,:])
-        rateK[i,:] = rateK[i,:] - mean_rateK[i]
+for i in range(nb_samples):
+    mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
+    mean_rateK[i] = np.mean(rateK[i,:])
+    rateK[i,:] = rateK[i,:] - mean_rateK[i]
         
 # our model
 model = models.Sequential()

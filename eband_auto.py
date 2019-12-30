@@ -1,24 +1,18 @@
 #!/usr/bin/python3
-# eband_train.py
+# eband_auto.py
 #
 # David Rowe Dec 2019
 #
 # Autoencoder experiment to map three rate K frames into one.
 # Also experimenting with VQ of constrained vector:
-#
+
 '''
   usage:
 
   ./eband_auto.py all_speech_8k.f32 --epochs 10 --dec 3 --encout vec.f32
   ~/codec2/build_linux/misc/vqtrain vec.f32 14 4096 vq1.f32
   cat vec.f32 | ~/codec2/build_linux/misc/vq_mbest -k 14 -q vq1.f32 -m 1 > vec_q.f32
-  ./eband_auto.py all_speech_8k.f32 --dec 3 --nnin autonn.h5 --decin vec.f32
-'''
-
-
-'''
-  usage: ./src/c2sim ~/Downloads/all_speech_8k.sw --bands ~/ampnn/all_speech_8k.f32 --modelout ~/ampnn/all_speech_8k.model 
-         ./eband_train.py all_speech_8k.f32 --epochs 25 --dec 3
+  ./eband_auto.py all_speech_8k.f32 --dec 3 --nnin autonn.h5 --decin vec_q.f32
 '''
 
 import numpy as np
@@ -56,6 +50,8 @@ parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames
 parser.add_argument('--dec', type=int, default=3, help='decimation rate to simulate')
 parser.add_argument('--encout', type=str, help='encoded output filename')
 parser.add_argument('--decin', type=str, help='encoded input filename')
+parser.add_argument('--decout', type=str, help='output rateK vectors')
+parser.add_argument('--overlap', action='store_true', help='generate more traring data with overlapped vectors')
 args = parser.parse_args()
 
 eband_K = args.eband_K
@@ -71,11 +67,17 @@ features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 print(features.shape)
 
 # bulk up training data using overlapping vectors
-train = np.zeros((nb_samples-dec,nb_features))
-for i in range(nb_samples-dec):
-    for d in range(dec):
-        st = d*eband_K
-        train[i,st:st+eband_K] = features[i+d,:]
+if args.overlap:
+    train = np.zeros((nb_samples-dec,nb_features))
+    for i in range(nb_samples-dec):
+        for d in range(dec):
+            st = d*eband_K
+            train[i,st:st+eband_K] = features[i+d,:]
+else:
+    print(features.shape)
+    nb_samples = int(nb_samples/dec)
+    print(nb_samples)
+    train = features[:nb_samples*dec,:].reshape((nb_samples, nb_features))
     
 # our model
 model = models.Sequential()
@@ -109,7 +111,7 @@ if args.encout:
     enc_model.layers[1].set_weights(model.layers[1].get_weights())
     enc_model.compile(loss='mse', optimizer=sgd)
 
-    # run this model over trarining data and save results to a file for VQ
+    # run this model over training data and save results to a file for VQ
     enc_out = enc_model.predict(train)
     print(enc_out.shape)
     enc_out.tofile(args.encout)
@@ -126,14 +128,16 @@ if args.decin:
     dec_model.layers[1].set_weights(model.layers[3].get_weights())
     dec_model.compile(loss='mse', optimizer=sgd)
     dec_in = np.fromfile(args.decin, dtype='float32')
-    dec_in = dec_in.reshape((nb_samples-dec, nb_constraint))
+    dec_in_samples = int(len(dec_in)/nb_constraint)
+    print("dec_in_samples: %d" % (dec_in_samples))    
+    dec_in = dec_in.reshape((nb_samples, nb_constraint))
 
 # try model over training database
 if args.nnin and args.decin:
     train_est = dec_model.predict(dec_in)
 else:
     train_est = model.predict(train)
-    
+
 mse = np.zeros(nb_samples-dec)
 e1 = 0
 for i in range(nb_samples-dec):
@@ -143,6 +147,10 @@ for i in range(nb_samples-dec):
 var = e1/(nb_samples*nb_features)
 print("var: %4.2f dB*dB" % (var))
 
+# optionally write output rateK vectors for synthesis
+if args.decout:
+    train_est.tofile(args.decout)
+ 
 # plot results
 
 if args.noplots:
