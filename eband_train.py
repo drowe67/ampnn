@@ -85,12 +85,8 @@ for i in range(nb_samples):
     mean_rateK[i] = np.mean(rateK[i,:])
     rateK[i,:] = rateK[i,:] - mean_rateK[i]
 
-# TODO - investigate normalisation of std
-#rateK_std = np.std(rateK, axis=0)
-#print(rateK_std.shape, rateK_std)
-#rateK /= rateK_std
-
 # set up sparse amp output vectors
+
 amp_sparse = np.zeros((nb_samples, width))
 for i in range(nb_samples):
     for m in range(1,L[i]+1):
@@ -106,6 +102,7 @@ if cand == 1:
     model.add(layers.Dense(width, activation='relu'))
     model.add(layers.Dense(width))
 else:
+    # simple linear model as a control
     model.add(layers.Dense(width,  input_dim=eband_K))
     
 model.summary()

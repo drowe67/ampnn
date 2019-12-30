@@ -100,7 +100,7 @@ for i in range(nb_samples):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
         amp_sparse[i,bin] = np.log10(A[i,m]) - mean_log10A[i]
 
-# reshape to simulate decimation/interpolation, we overlap here to get more traiing data
+# reshape to simulate decimation/interpolation, we overlap here to get more training data
 
 rateKdec = np.zeros((nb_samples-dec, 2*eband_K))
 for i in range(nb_samples-dec):
@@ -111,7 +111,7 @@ for i in range(0, nb_samples-dec):
     for d in range(dec):
         st = d*width
         amp_sparsedec[i,st:st+width] = amp_sparse[i+d,:]
-    
+
 # our model
 model = models.Sequential()
 cand = 2
@@ -122,7 +122,8 @@ if cand == 1:
     model.add(layers.Dense(dec*width))
 
 if cand == 2:
-    model.add(layers.Dense(dec*width, activation='relu', input_dim=2*eband_K))
+    #model.add(layers.Dense(dec*width, activation='relu', input_dim=2*eband_K))
+    model.add(layers.Dense(dec*width,  input_dim=2*eband_K))
     model.add(layers.Dense(dec*width))
 model.summary()
 
