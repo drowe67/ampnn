@@ -52,7 +52,6 @@ parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length
 parser.add_argument('--nnout', type=str, default="ampnn.h5", help='Name of output NN we have trained')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
-parser.add_argument('--removemean', action='store_true', help='remove mean from eband and Am vectors')
 args = parser.parse_args()
 assert nb_plots == len(args.frames)
 
@@ -71,7 +70,7 @@ for f in range(nb_samples):
     L[f] = round(L[f]*Fcutoff/(Fs/2))
 
 # read in rate K vectors
-features = np.fromfile(args.featurefile, dtype='float32')
+features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
 nb_features = eband_K
 nb_samples1 = len(features)/nb_features
 print("nb_samples1: %d" % (nb_samples1))
@@ -81,11 +80,10 @@ rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
 mean_log10A = np.zeros(nb_samples)
 mean_rateK = np.zeros(nb_samples)
-if args.removemean:
-    for i in range(nb_samples):
-        mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
-        mean_rateK[i] = np.mean(rateK[i,:])
-        rateK[i,:] = rateK[i,:] - mean_rateK[i]
+for i in range(nb_samples):
+    mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
+    mean_rateK[i] = np.mean(rateK[i,:])
+    rateK[i,:] = rateK[i,:] - mean_rateK[i]
 
 # TODO - investigate normalisation of std
 #rateK_std = np.std(rateK, axis=0)
