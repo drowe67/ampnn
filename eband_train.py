@@ -99,10 +99,15 @@ for i in range(nb_samples):
 
 # our model
 model = models.Sequential()
-model.add(layers.Dense(2*eband_K, activation='relu', input_dim=eband_K))
-model.add(layers.Dense(2*eband_K, activation='relu'))
-model.add(layers.Dense(width, activation='relu'))
-model.add(layers.Dense(width))
+cand=1
+if cand == 1:
+    model.add(layers.Dense(2*eband_K, activation='relu', input_dim=eband_K))
+    model.add(layers.Dense(2*eband_K, activation='relu'))
+    model.add(layers.Dense(width, activation='relu'))
+    model.add(layers.Dense(width))
+else:
+    model.add(layers.Dense(width,  input_dim=eband_K))
+    
 model.summary()
 
 # custom loss function - we only care about outputs at the non-zero
