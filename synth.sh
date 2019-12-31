@@ -24,8 +24,9 @@ else
     K_en=13
 fi
 
-# pass $LOWER in via an env var
+# pass $LOWER and $DEC in via an env var
 LOWER=${LOWER:-100}
+DEC=${DEC:-1}
 
 K=$(python -c "print(int(${K_en[i]}-${K_st[i]}+1))")
 
@@ -34,7 +35,7 @@ tmp_dir=$(mktemp -d)
 sox_args="-t .sw -r 8000 -c 1"
 results=$out_dir/zzresults.txt
 
-printf "sample\tK\tK_st\tK_en\tNNuq\tVQ\tNNvq\n" > $results
+printf "sample\tK\tK_st\tK_en\tDec\tNNuq\tVQ\tNNvq\n" > $results
 
 for s in $SAMPLES
 do
@@ -47,12 +48,13 @@ do
     modelout_quantised=$tmp_dir/$s'_out_quantised.model'
     tmp=$tmp_dir/tmp.txt
     
-    printf "%.6s\t%d\t%d\t%d\t" $s $K $K_st $K_en >> $results
+    printf "%.6s\t%d\t%d\t%d\t%d\t" $s $K $K_st $K_en $DEC >> $results
 
     c2sim wav/$s.sw --bands $bands --modelout $modelin
     extract -s $K_st -e $K_en -t $maxK $bands $bands_slice -g $gain
 
-    ./eband_out.py $nn $bands_slice $modelin --modelout $modelout --eband_K $K --noplots --gain $gain --removemean >$tmp
+    # rate K -> rate L on unquantised vectors
+    ./eband_out.py $nn $bands_slice $modelin --modelout $modelout --eband_K $K --noplots --gain $gain --dec $DEC >$tmp
     printf "%4.2f\t" `tail -n1 $tmp` >> $results
     
     c2sim wav/$s.sw -o - | sox $sox_args - $out_dir/$s'_0_out.wav'
@@ -69,9 +71,10 @@ do
 	cat $bands_slice | vq_mbest -k $K -q $5,$6 -m 4 --lower $LOWER > $bands_quantised 2>$tmp
     fi
     printf "%4.2f\t" `tail -n1 $tmp` >> $results
-    
+
+    # synthesised VQ-ed sample
     if [ "$#" -ge 5 ]; then
-	./eband_out.py $nn $bands_quantised $modelin --modelout $modelout_quantised --eband_K $K --noplots --gain $gain --removemean > $tmp
+	./eband_out.py $nn $bands_quantised $modelin --modelout $modelout_quantised --eband_K $K --noplots --gain $gain --dec $DEC > $tmp
 	c2sim wav/$s.sw --modelin $modelout_quantised -o - --phase0 --postfilter | sox $sox_args - $out_dir/$s'_4_nnqp0.wav'
 	printf "%4.2f\n" `tail -n1 $tmp` >> $results
     fi
