@@ -48,12 +48,14 @@ parser.add_argument('--eband_start', type=int, default=0, help='Start element of
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
+parser.add_argument('--dec', type=int, default=1, help='input rate K decimation (lin interp)')
+parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 args = parser.parse_args()
 
 eband_K = args.eband_K
 
 # read in model file records
-Wo, L, A, phase, voiced = codec2_model.read(args.modelin)
+Wo, L, A, phase, voiced = codec2_model.read(args.modelin, args.nb_samples)
 print(A.shape, Wo.shape)
 nb_samples = Wo.size;
 nb_voiced = np.count_nonzero(voiced)
@@ -64,10 +66,10 @@ for f in range(nb_samples):
     L[f] = round(L[f]*Fcutoff/(Fs/2))
 
 # read in rate K vectors
-features = np.fromfile(args.featurefile, dtype='float32')
+features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
 nb_features = eband_K
 nb_samples1 = int(len(features)/nb_features)
-features = np.reshape(features, (nb_samples1, nb_features))
+features = np.reshape(features, (nb_samples1,nb_features))
 if nb_samples > nb_samples1:
     print("warning nb_samples: %d nb_samples1: %d, padding" % (nb_samples, nb_samples1))
     pad=np.zeros((nb_samples - nb_samples1, eband_K))
@@ -76,6 +78,18 @@ if nb_samples > nb_samples1:
 print(features.shape)
 rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
+# optional linear interp/dec
+if args.dec != 1:
+    dec = args.dec
+    inc = 1.0/dec
+    print("hello")
+    for i in range(0,nb_samples-dec,dec):
+        c = 1.0/dec
+        left = rateK[i,:]; right = rateK[i+dec,:];
+        for d in range(1,dec):
+            rateK[i+d,:] = (1-c)*left + c*right
+            c += inc
+ 
 # remove means
 mean_log10A = np.zeros(nb_samples)
 mean_rateK = np.zeros(nb_samples)
@@ -135,9 +149,12 @@ nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
 if args.noplots:
     sys.exit(0)
 
+def reject_outliers(data, m=2):
+    return data[abs(data - np.mean(data)) < m * np.std(data)]
+
 plt.figure(1)
 plt.title('Histogram of mean error squared per frame')
-plt.hist(error,20)
+plt.hist(reject_outliers(error), bins='fd')
 plt.show(block=False)
 
 # ebands:
