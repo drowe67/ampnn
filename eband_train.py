@@ -66,9 +66,11 @@ print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
 # Avoid harmonics above Fcutoff, as anti-alising filters tend to
 # produce very small values that don't affect speech but contribute
 # greatly to error
+print(L[:10])
 for f in range(nb_samples):
    L[f] = round(L[f]*((Fs/2)-Fcutoff)/(Fs/2))
-
+print(L[:10])
+      
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
 nb_features = eband_K
@@ -197,7 +199,7 @@ while loop:
         ef = np.var(20*np.log10(A[f,1:L[f]+1])-20*amp_est[f,1:L[f]+1])
         t = "f: %d %3.1f" % (f, ef)
         plt.title(t)
-        plt.ylim(20,80)
+        plt.ylim(0,60)
     plt.show(block=False)
 
     plt.figure(4)

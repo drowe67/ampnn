@@ -32,8 +32,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 width             = 128
 default_eband_K   = 14
 N                 = 80
-Fs                = 8000
-Fcutoff           = 3600
+Fcutoff           = 400
 
 def list_str(values):
     return values.split(',')
@@ -50,9 +49,11 @@ parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
 parser.add_argument('--dec', type=int, default=1, help='input rate K decimation (lin interp)')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
+parser.add_argument('--Fs', type=int, default=8000, help='scale factor for eband vectors')
 args = parser.parse_args()
 
 eband_K = args.eband_K
+Fs = args.Fs
 
 # read in model file records
 Wo, L, A, phase, voiced = codec2_model.read(args.modelin, args.nb_samples)
@@ -63,7 +64,7 @@ print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
 
 # remove HF, very low amplitude samples that skew results
 for f in range(nb_samples):
-    L[f] = round(L[f]*Fcutoff/(Fs/2))
+    L[f] = round(L[f]*((Fs/2)-Fcutoff)/(Fs/2))
 
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
