@@ -35,8 +35,7 @@ default_eband_K   = 14
 max_amp           = 160 
 nb_plots          = 6
 N                 = 80
-Fs                = 8000
-Fcutoff           = 3600
+Fcutoff           = 400
 
 def list_str(values):
     return values.split(',')
@@ -44,7 +43,7 @@ def list_str(values):
 parser = argparse.ArgumentParser(description='Train a NN to decode eband rate K -> rate L')
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('modelfile', help='Codec 2 model records with rate L vectors')
-parser.add_argument('--frames', type=list_str, default="30,31,32,33,34,35", help='Frames to view')
+parser.add_argument('--frame', type=int, default=30, help='frames to start veiwing')
 parser.add_argument('--epochs', type=int, default=25, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
@@ -52,10 +51,11 @@ parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length
 parser.add_argument('--nnout', type=str, default="ampnn.h5", help='Name of output NN we have trained')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
 parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
+parser.add_argument('--Fs', type=int, default=8000, help='scale factor for eband vectors')
 args = parser.parse_args()
-assert nb_plots == len(args.frames)
 
 eband_K = args.eband_K
+Fs = args.Fs
 
 # read in model file records
 Wo, L, A, phase, voiced = codec2_model.read(args.modelfile, args.nb_samples)
@@ -67,7 +67,7 @@ print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
 # produce very small values that don't affect speech but contribute
 # greatly to error
 for f in range(nb_samples):
-    L[f] = round(L[f]*Fcutoff/(Fs/2))
+   L[f] = round(L[f]*((Fs/2)-Fcutoff)/(Fs/2))
 
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
@@ -137,7 +137,7 @@ amp_sparse_est = model.predict(rateK)
 # extract amplitudes from sparse vector and estimate variance of
 # quantisation error (mean error squared between original and
 # quantised magnitudes, the spectral distortion)
-amp_est = np.zeros((nb_samples,width))
+amp_est = np.zeros((nb_samples,max_amp))
 error = np.zeros(nb_samples)
 e1 = 0; n = 0;
 for i in range(nb_samples):
@@ -163,8 +163,8 @@ def sample_time(r, A):
 
 if args.noplots:
     sys.exit(0)
-frames = np.array(args.frames,dtype=int)
-nb_plots = frames.size
+frame=args.frame
+nb_plots = 6
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
 
 plt.figure(1)
@@ -175,36 +175,44 @@ plt.title('model loss')
 plt.xlabel('epoch')
 plt.show(block=False)
 
+def reject_outliers(data, m=2):
+    return data[abs(data - np.mean(data)) < m * np.std(data)]
+
 plt.figure(2)
-plt.title('Amplitudes Spectra')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = int(frames[r]);
-    plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
-    plt.plot(20*(amp_est[f,1:L[f]+1]+mean_log10A[f]),'r')
-    ef = np.var(20*np.log10(A[f,1:L[f]+1])-20*amp_est[f,1:L[f]+1])
-    t = "f: %d %3.1f" % (f, ef)
-    plt.title(t)
-    plt.ylim(20,80)
-plt.show(block=False)
-
-plt.figure(3)
-plt.title('Time Domain')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = int(frames[r]);
-    s = sample_time(f, A[f,:])
-    A_est = 10**(amp_est[f,:]+mean_log10A[f])
-    s_est = sample_time(f, A_est)
-    plt.plot(range(-N,N),s,'g')
-    plt.plot(range(-N,N),s_est,'r') 
-plt.show(block=False)
-
-plt.figure(4)
 plt.title('Histogram of mean error squared per frame')
-plt.hist(error,20)
+plt.hist(reject_outliers(error), bins='fd')
 plt.show(block=False)
 
-print("Click on last figure to finish....")
-plt.waitforbuttonpress(0)
+print("Any key to page, click on last figure to finish....")
+loop=True
+while loop:
+    plt.figure(3)
+    plt.clf()
+    plt.title('Amplitudes Spectra')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frame + r;
+        plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
+        plt.plot(20*(amp_est[f,1:L[f]+1]+mean_log10A[f]),'r')
+        ef = np.var(20*np.log10(A[f,1:L[f]+1])-20*amp_est[f,1:L[f]+1])
+        t = "f: %d %3.1f" % (f, ef)
+        plt.title(t)
+        plt.ylim(20,80)
+    plt.show(block=False)
+
+    plt.figure(4)
+    plt.clf()
+    plt.title('Time Domain')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frame + r;
+        s = sample_time(f, A[f,:])
+        A_est = 10**(amp_est[f,:]+mean_log10A[f])
+        s_est = sample_time(f, A_est)
+        plt.plot(range(-N,N),s,'g')
+        plt.plot(range(-N,N),s_est,'r') 
+    plt.show(block=False)
+
+    loop = plt.waitforbuttonpress(0)
+    frame += nb_plots
 plt.close()
