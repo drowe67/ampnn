@@ -34,7 +34,7 @@ function synth() {
     c2sim wav/$1'.sw' --modelin $modelout --Fs 16000 -o - | sox $sox_args - $1'_nn.wav'
 }
 
-#train
+train
 synth box
 synth four
 

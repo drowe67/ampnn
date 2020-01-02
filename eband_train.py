@@ -43,7 +43,7 @@ def list_str(values):
 parser = argparse.ArgumentParser(description='Train a NN to decode eband rate K -> rate L')
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('modelfile', help='Codec 2 model records with rate L vectors')
-parser.add_argument('--frame', type=int, default=30, help='frames to start veiwing')
+parser.add_argument('--frame', type=int, default=50, help='frames to start veiwing')
 parser.add_argument('--epochs', type=int, default=25, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
@@ -66,10 +66,8 @@ print("nb_samples: %d voiced %d" % (nb_samples, nb_voiced))
 # Avoid harmonics above Fcutoff, as anti-alising filters tend to
 # produce very small values that don't affect speech but contribute
 # greatly to error
-print(L[:10])
 for f in range(nb_samples):
    L[f] = round(L[f]*((Fs/2)-Fcutoff)/(Fs/2))
-print(L[:10])
       
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
@@ -78,22 +76,15 @@ nb_samples1 = len(features)/nb_features
 print("nb_samples1: %d" % (nb_samples1))
 assert nb_samples == nb_samples1
 features = np.reshape(features, (nb_samples, nb_features))
-rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
-
-mean_log10A = np.zeros(nb_samples)
-mean_rateK = np.zeros(nb_samples)
-for i in range(nb_samples):
-    mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
-    mean_rateK[i] = np.mean(rateK[i,:])
-    rateK[i,:] = rateK[i,:] - mean_rateK[i]
+# rateK input is log10(energy), output is log10(amplitude)
+rateK = 0.5*features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
 # set up sparse amp output vectors
-
 amp_sparse = np.zeros((nb_samples, width))
 for i in range(nb_samples):
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
-        amp_sparse[i,bin] = np.log10(A[i,m]) - mean_log10A[i]
+        amp_sparse[i,bin] = np.log10(A[i,m])
 
 # our model
 model = models.Sequential()
@@ -136,23 +127,28 @@ model.save(args.nnout)
 # try model over training database
 amp_sparse_est = model.predict(rateK)
 
-# extract amplitudes from sparse vector and estimate variance of
-# quantisation error (mean error squared between original and
-# quantised magnitudes, the spectral distortion)
+# extract amplitudes from sparse vector and estimate 
+# quantisation error.  The MSE is the spectral distortion, which
+# includes a DC term (fixed gain error).  The variance of the error
+# is a better measure of the error in spectral shape.
+
 amp_est = np.zeros((nb_samples,max_amp))
-error = np.zeros(nb_samples)
+mse = np.zeros(nb_samples)
+var = np.zeros(nb_samples)
 e1 = 0; n = 0;
 for i in range(nb_samples):
     e2 = 0;
+    ev = np.zeros(L[i])
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
         amp_est[i,m] = amp_sparse_est[i,bin]
-        e = (20*amp_sparse_est[i,bin] - 20*amp_sparse[i,bin]) ** 2
-        n+=1; e1 += e; e2 += e;
-    error[i] = e2/L[i]
-# mean of error squared is actually the variance
-print("var1: %3.2f var2: %3.2f (dB*dB)" % (e1/n,np.mean(error)))
-print("%4.2f" % (e1/n))
+        ev[m-1] = 20*amp_sparse_est[i,bin] - 20*amp_sparse[i,bin]
+        e = ev[m-1] ** 2
+        e1 += e; e2 += e; n+=1
+    mse[i] = e2/L[i]
+    var[i] = np.var(ev)
+print("mse1: %3.2f mse2: %3.2f var2: %3.2f (dB*dB) " % (e1/n,np.mean(mse),np.mean(var)))
+print("%4.2f" % np.mean(var))
 
 # synthesise time domain signal
 def sample_time(r, A):
@@ -181,38 +177,53 @@ def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
 
 plt.figure(2)
-plt.title('Histogram of mean error squared per frame')
-plt.hist(reject_outliers(error), bins='fd')
+plt.title('Histogram of mean squared error per frame')
+plt.hist(reject_outliers(mse), bins='fd')
 plt.show(block=False)
+
+plt.figure(3)
+plt.plot(mse)
+plt.plot(var)
 
 print("Any key to page, click on last figure to finish....")
 loop=True
 while loop:
-    plt.figure(3)
+    plt.figure(4)
+    plt.tight_layout()
     plt.clf()
     plt.title('Amplitudes Spectra')
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frame + r;
-        plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
-        plt.plot(20*(amp_est[f,1:L[f]+1]+mean_log10A[f]),'r')
-        ef = np.var(20*np.log10(A[f,1:L[f]+1])-20*amp_est[f,1:L[f]+1])
-        t = "f: %d %3.1f" % (f, ef)
+        plt.plot(20*(np.log10(A[f,1:L[f]+1])),'g')
+        plt.plot(20*(amp_est[f,1:L[f]+1]),'r')
+        diff = 20*np.log10(A[f,1:L[f]+1]) - 20*amp_est[f,1:L[f]+1]
+        a_mse = np.sum(diff**2)/L[f]
+        a_var = np.var(diff)
+        t = "f: %d %3.1f  %3.1f" % (f, a_mse, a_var)
         plt.title(t)
-        plt.ylim(0,60)
+        plt.ylim(0,70)
     plt.show(block=False)
 
-    plt.figure(4)
+    plt.figure(5)
     plt.clf()
     plt.title('Time Domain')
+    mx = 0
+    s = np.zeros((nb_plots, 2*N))
+    for r in range(nb_plots):
+        f = frame + r;
+        s[r,:] = sample_time(f, A[f,:])
+        if np.max(np.abs(s)) > mx:
+            mx = np.max(np.abs(s))
+    mx = 1000*np.ceil(mx/1000)
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frame + r;
-        s = sample_time(f, A[f,:])
-        A_est = 10**(amp_est[f,:]+mean_log10A[f])
+        A_est = 10**(amp_est[f,:])
         s_est = sample_time(f, A_est)
-        plt.plot(range(-N,N),s,'g')
-        plt.plot(range(-N,N),s_est,'r') 
+        plt.plot(range(-N,N),s[r,:],'g')
+        plt.plot(range(-N,N),s_est,'r')
+        plt.ylim(-mx,mx)
     plt.show(block=False)
 
     loop = plt.waitforbuttonpress(0)

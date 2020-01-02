@@ -8,7 +8,6 @@
 
 PATH=$PATH:~/codec2/build_linux/src:$PATH:~/codec2/build_linux/misc
 
-
 if [ "$#" -lt 2 ]; then
     echo "usage: ./hyper_params.sh SpeechFile results_dir"
     echo "       ./hyper_params.sh ~/Downloads/all_8k.sw 191215"

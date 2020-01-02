@@ -77,7 +77,7 @@ if nb_samples > nb_samples1:
     print(features.shape, pad.shape)
     features=np.concatenate((features, pad))
 print(features.shape)
-rateK = features[:,args.eband_start:args.eband_start+eband_K]/args.gain
+rateK = 0.5*features[:,args.eband_start:args.eband_start+eband_K]/args.gain
 
 # optional linear interp/dec
 if args.dec != 1:
@@ -91,13 +91,6 @@ if args.dec != 1:
             rateK[i+d,:] = (1-c)*left + c*right
             c += inc
  
-# remove means
-mean_log10A = np.zeros(nb_samples)
-mean_rateK = np.zeros(nb_samples)
-for i in range(nb_samples):
-    mean_log10A[i] = np.mean(np.log10(A[i,1:L[i]+1]))
-    mean_rateK[i] = np.mean(rateK[i,:])
-    rateK[i,:] = rateK[i,:] - mean_rateK[i]
         
 # our model
 model = models.Sequential()
@@ -111,24 +104,26 @@ model.load_weights(args.ampnn)
 # run model
 amp_sparse_est = model.predict(rateK)
 
-# extract amplitudes from sparse vector and estimate variance of
-# quantisation error (mean error squared between original and
+# extract amplitudes from sparse vector and estimate 
+# quantisation error (mean squared error between original and
 # quantised magnitudes, the spectral distortion)
 A_est = np.zeros((nb_samples,codec2_model.max_amp+1))
-error = np.zeros(nb_samples)
+mse = np.zeros(nb_samples)
+var = np.zeros(nb_samples)
 e1 = 0; n = 0;
 for i in range(nb_samples):
     e2 = 0;
+    ev = np.zeros(L[i])
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
-        A_est[i,m] = 10 ** (amp_sparse_est[i,bin]+mean_log10A[i])
-        e = (20*(amp_sparse_est[i,bin] + mean_log10A[i]) - 20*np.log10(A[i,m])) ** 2
+        A_est[i,m] = 10 ** amp_sparse_est[i,bin]
+        ev[m-1] = 20*amp_sparse_est[i,bin] - 20*np.log10(A[i,m])
+        e = ev[m-1] ** 2
         n+=1; e1 += e; e2 += e;
-    error[i] = e2/L[i]
-
-# mean of error squared is actually the variance
-print("var1: %3.2f var2: %3.2f (dB*dB)" % (e1/n,np.mean(error)))
-print("%4.2f" % (e1/n))
+    mse[i] = e2/L[i]
+    var[i] = np.var(ev)
+print("mse1: %3.2f mse2: %3.2f var2: %3.2f (dB*dB) " % (e1/n,np.mean(mse),np.mean(var)))
+print("%4.2f" % np.mean(var))
       
 # save to output model file for synthesis
 if args.modelout:
@@ -154,8 +149,12 @@ def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
 
 plt.figure(1)
-plt.title('Histogram of mean error squared per frame')
-plt.hist(reject_outliers(error), bins='fd')
+plt.title('Histogram of mean squared error per frame')
+plt.hist(reject_outliers(mse), bins='fd')
+plt.show(block=False)
+
+plt.figure(2)
+plt.plot(mse)
 plt.show(block=False)
 
 # ebands:
@@ -164,7 +163,8 @@ plt.show(block=False)
 print("Press any key for next page, click on last figure to finish....")
 loop=True
 while loop and frame < nb_samples:
-    plt.figure(2)
+    plt.figure(3)
+    plt.tight_layout()
     plt.clf()
     plt.title('Amplitudes Spectra')
     for r in range(nb_plots):
@@ -172,23 +172,32 @@ while loop and frame < nb_samples:
         f = frame+r;
         plt.plot(20*np.log10(A[f,1:L[f]+1]),'g')
         plt.plot(20*np.log10(A_est[f,1:L[f]+1]),'r')
-        ef = np.var(20*np.log10(A[f,1:L[f]+1]) - 20*np.log10(A_est[f,1:L[f]+1]) )
-        t = "f: %d %3.1f" % (f, ef)
+        diff = 20*np.log10(A[f,1:L[f]+1]) - 20*np.log10(A_est[f,1:L[f]+1])
+        a_mse = np.sum(diff**2)/L[f]
+        a_var = np.var(diff)
+        t = "f: %d %3.1f  %3.1f" % (f, a_mse, a_var)
         plt.title(t)
         plt.ylim(0,80)
-        #print(f,4000*Wo[f]*(L[f])/np.pi)
     plt.show(block=False)
 
-    plt.figure(3)
+    plt.figure(4)
     plt.clf()
     plt.title('Time Domain')
+    mx = 0
+    s = np.zeros((nb_plots, 2*N))
+    for r in range(nb_plots):
+        f = frame + r;
+        s[r,:] = sample_time(f, A[f,:])
+        if np.max(np.abs(s)) > mx:
+            mx = np.max(np.abs(s))
+    mx = 1000*np.ceil(mx/1000)
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frame+r;
-        s = sample_time(f, A[f,:])
         s_est = sample_time(f, A_est[f,:])
-        plt.plot(range(-N,N),s,'g')
+        plt.plot(range(-N,N),s[r,:],'g')
         plt.plot(range(-N,N),s_est,'r') 
+        plt.ylim(-mx,mx)
     plt.show(block=False)
 
     loop=plt.waitforbuttonpress(0)
