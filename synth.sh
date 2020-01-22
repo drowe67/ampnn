@@ -9,7 +9,7 @@ if [ "$#" -lt 2 ]; then
     exit
 fi
 
-SAMPLES="cap_8k experienced_8k fish_8k swam_8k"
+SAMPLES="cap_8k type_8k pencil_8k fish_8k swam_8k"
 maxK=14
 gain=10
 
@@ -78,6 +78,8 @@ do
 	c2sim wav/$s.sw --modelin $modelout_quantised -o - --phase0 --postfilter | sox $sox_args - $out_dir/$s'_4_nnqp0.wav'
 	printf "%4.2f\n" `tail -n1 $tmp` >> $results
     fi
-    
+
+    # codec 2 700C
+    c2enc 700C wav/$s.sw - | c2dec 700C - - | sox $sox_args - $out_dir/$s'_5_700c.wav'
 done
 

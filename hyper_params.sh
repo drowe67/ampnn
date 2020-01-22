@@ -23,14 +23,14 @@ gain=10            # gives us dB from log10(band energys)
 epochs=25
 vq_stop=1E-3       # VQ training stop criterion
 
-N=4                # number of trials
+N=6                # number of trials
 
-K_st=(  1    1     1     1) # start of slice
-K_en=( 13   13    13    13) # end of slice
-M1=(  512  512  4096  4096) # number of VQ levels (same each stage)
-M2=(  512  512     0     0) # number of VQ levels (same each stage)
-L=(     1    1     1     1) # lower log10(e) limit of samples to use for NN/VQ training
-D=(     1    3     1     3) # frame rate decimation
+K_st=(  1     1     1     1     2     1) # start of slice
+K_en=( 13    13    13    13    12    12) # end of slice
+M1=(  512   512  4096  4096  4096  1024) # number of VQ levels (same each stage)
+M2=(  512   512     0     0     0  1024) # number of VQ levels (same each stage)
+L=(     1     1     1     1     1     1) # lower log10(e) limit of samples to use for NN/VQ training
+D=(     1     3     1     3     3     4) # frame rate decimation
 
 if [ ${#K_st[@]} -lt $N ]; then echo "K_st wrong length"; exit 1; fi
 if [ ${#K_en[@]} -lt $N ]; then echo "K_en wrong length"; exit 1; fi
@@ -78,7 +78,7 @@ do
     if  [ "${M2[i]}" -ne 0 ]; then
 	cat $train0 | vq_mbest -k $K -q $vq1,$vq2 -m 4 --lower $lower > $quantised 2>$tmp
     else
-	cat $train0 | vq_mbest -k $K -q $vq1 -m 1 --lower $lower > $quantised --lower $lower 2>$tmp
+	cat $train0 | vq_mbest -k $K -q $vq1 -m 1 --lower $lower > $quantised 2>$tmp
     fi
     printf "%4.2f\t" `tail -n1 $tmp` >> $results
     
@@ -94,5 +94,4 @@ do
     fi
 done
 
-# TODO plot PNG with hyper param results
 
