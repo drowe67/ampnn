@@ -116,7 +116,7 @@ commitment_cost = 0.25 # Controls the weighting of the loss terms.
 # EarlyStoppingCallback.
 esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
                                     patience=5, verbose=0, mode='auto',
-                                    baseline=None, restore_best_weights=True)
+                                    baseline=None)
 
 # Encoder
 input_img = Input(shape=(28, 28, 1))
