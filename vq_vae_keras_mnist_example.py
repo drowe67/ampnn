@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """VQ-VAE_Keras_MNIST_Example.ipynb
 
@@ -23,6 +24,10 @@ from keras import losses
 from keras import backend as K
 from keras.utils import to_categorical
 from keras.datasets import mnist, fashion_mnist
+import os
+
+# less verbose tensorflow ....
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # Load data.
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -44,12 +49,15 @@ y_test = to_categorical(y_test)
 target_dict = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 
+
 image_size = x_train.shape[1]
 original_dim = image_size * image_size
 x_train = np.reshape(x_train, [-1, original_dim])
 x_test = np.reshape(x_test, [-1, original_dim])
 x_train = x_train.astype('float32') / 255
 x_test = x_test.astype('float32') / 255
+
+print(x_test.shape)
 
 # VQ layer.
 class VQVAELayer(Layer):
@@ -113,7 +121,7 @@ def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
     return vq_vae_loss
 
 # Hyper Parameters.
-epochs = 1000 # MAX
+epochs = 15 # MAX
 batch_size = 64
 validation_split = 0.1
 
@@ -187,21 +195,21 @@ loss = history.history['loss'] # Training loss.
 val_loss = history.history['val_loss'] # Validation loss.
 num_epochs = range(1, 1 + len(history.history['loss'])) # Number of training epochs.
 
-plt.figure(figsize=(16,9))
 plt.plot(num_epochs, loss, label='Training loss') # Plot training loss.
 plt.plot(num_epochs, val_loss, label='Validation loss') # Plot validation loss.
 
 plt.title('Training and validation loss')
 plt.legend(loc='best')
-plt.show()
+plt.show(block=False)
 
 # Show original reconstruction.
-n_rows = 5
-n_cols = 8 # Must be divisible by 2.
+n_rows = 2
+n_cols = 2 # Must be divisible by 2.
 samples_per_col = int(n_cols / 2)
 sample_offset = np.random.randint(0, len(x_test) - n_rows - n_cols - 1)
 #sample_offset = 0
 
+print(x_test.shape)
 img_idx = 0
 plt.figure(figsize=(n_cols * 2, n_rows * 2))
 for i in range(1, n_rows + 1):
@@ -224,7 +232,7 @@ for i in range(1, n_rows + 1):
         ax = plt.subplot(n_rows, n_cols, idx + 1)
         ax.title.set_text('({:d}) Reconstruction'.format(img_idx))
         ax.imshow(vqvae.predict(
-            x_test[img_idx + sample_offset]).reshape(28, 28),
+            x_test[img_idx + sample_offset].reshape(1,original_dim)).reshape(28, 28),
             cmap='gray_r',
             clim=(0, 1))
         ax.get_xaxis().set_visible(False)
