@@ -18,7 +18,7 @@ import tensorflow as tf
 import keras
 
 from keras.models import Model
-from keras.layers import Input, Layer, Activation, Dense, Flatten, Dropout, Lambda, Conv2D, MaxPooling2D, UpSampling2D, Conv2DTranspose, SpatialDropout2D
+from keras.layers import Input, Layer, Activation, Dense, Flatten, Dropout, Lambda, Conv2D, MaxPooling2D, UpSampling2D, Conv2DTranspose, SpatialDropout2D, Reshape
 from keras.layers.normalization import BatchNormalization
 from keras import losses
 from keras import backend as K
@@ -76,14 +76,14 @@ class VQVAELayer(Layer):
                                   shape=(self.embedding_dim, self.num_embeddings),
                                   initializer=self.initializer,
                                   trainable=True)
-
+        
         # Finalize building.
         super(VQVAELayer, self).build(input_shape)
 
     def call(self, x):
         # Flatten input except for last dimension.
         flat_inputs = K.reshape(x, (-1, self.embedding_dim))
-
+        
         # Calculate distances of input to embedding vectors.
         distances = (K.sum(flat_inputs**2, axis=1, keepdims=True)
                      - 2 * K.dot(flat_inputs, self.w)
@@ -122,13 +122,13 @@ def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
     return vq_vae_loss
 
 # Hyper Parameters.
-epochs = 15 # MAX
+epochs = 20 # MAX
 batch_size = 64
 validation_split = 0.1
 
 # VQ-VAE Hyper Parameters.
-embedding_dim = 32 # Length of embedding vectors.
-num_embeddings = 128 # Number of embedding vectors (high value = high bottleneck capacity).
+embedding_dim =  2 # Length of embedding vectors.
+num_embeddings = 4 # Number of embedding vectors (high value = high bottleneck capacity).
 commitment_cost = 0.25 # Controls the weighting of the loss terms.
 
 # EarlyStoppingCallback.
@@ -136,61 +136,41 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
                                     patience=5, verbose=0, mode='auto',
                                     baseline=None)
 
+nb_samples = 10000;
+bits = np.random.randint(2,size=nb_samples*embedding_dim).reshape(nb_samples, embedding_dim)
+x_train = 2*bits-1 # + 0.1*np.random.randn(nb_samples, embedding_dim)
+
 # Encoder
-'''
-input_img = Input(shape=(28, 28, 1))
-x = Conv2D(32, (3, 3), activation='relu')(input_img)
-#x = BatchNormalization()(x)
-x = Conv2D(32, (3, 3), activation='relu')(x)
-#x = BatchNormalization()(x)
-x = MaxPooling2D(pool_size=(2, 2))(x)
-#x = Dropout(0.2)(x)
-x = Conv2D(64, (3, 3), activation='relu')(x)
-#x = BatchNormalization()(x)
-x = MaxPooling2D(pool_size=(2, 2))(x)
-#x = Dropout(0.3)(x)
-x = Conv2D(64, (3, 3), activation='relu')(x)
-#x = BatchNormalization()(x)
-#x = Dropout(0.4)(x)
 
-# VQVAELayer.
-enc = Conv2D(embedding_dim, kernel_size=(1, 1), strides=(1, 1), name="pre_vqvae")(x)
-'''
-
-input_shape = (original_dim, )
-intermediate_dim = 512
+input_shape = (embedding_dim, )
 inputs = Input(shape=input_shape, name='encoder_input')
-x = Dense(intermediate_dim, activation='relu')(inputs)
-enc = Dense(embedding_dim, activation='sigmoid')(x)
-
-enc_inputs = enc
+enc = inputs
+enc_inputs = inputs
 enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(enc)
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 data_variance = np.var(x_train)
-print("data_variance: %d" % (data_variance))
+print("data_variance: %f" % (data_variance))
 loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
-
-'''
-# Decoder.
-x = Conv2DTranspose(64, (3, 3), activation='relu')(x)
-x = UpSampling2D()(x)
-x = Conv2DTranspose(32, (3, 3), activation='relu')(x)
-x = UpSampling2D()(x)
-x = Conv2DTranspose(32, (3, 3), activation='relu')(x)
-x = Conv2DTranspose(1, (3, 3))(x)
-'''
-x = Dense(intermediate_dim, activation='relu')(x)
-x = Dense(original_dim, activation='sigmoid')(x)
 
 # Autoencoder.
 vqvae = Model(inputs, x)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
+vq = np.array([[1.0,1.0,-1.0,-1.0],[1.0,-1.0,1.0,-1.0]])/10
+print(vq)
+w = vqvae.get_layer('vqvae').set_weights([vq])
 
 history = vqvae.fit(x_train, x_train,
                     batch_size=batch_size, epochs=epochs,
                     validation_split=validation_split,
                     callbacks=[esc])
+w = vqvae.get_layer('vqvae').get_weights()
+print(w)
+w = np.array(w[0].shape)
+print(w)
+plt.scatter(x_train[:,0],x_train[:,1])
+#plt.show()
+exit()
 
 # Plot training results.
 loss = history.history['loss'] # Training loss.
