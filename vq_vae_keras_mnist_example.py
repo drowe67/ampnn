@@ -138,7 +138,7 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
 
 nb_samples = 10000;
 bits = np.random.randint(2,size=nb_samples*embedding_dim).reshape(nb_samples, embedding_dim)
-x_train = 2*bits-1 # + 0.1*np.random.randn(nb_samples, embedding_dim)
+x_train = 2*bits-1 + 0.1*np.random.randn(nb_samples, embedding_dim)
 
 # Encoder
 
@@ -156,20 +156,19 @@ loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
 vqvae = Model(inputs, x)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
+
+# seed VQ entries otherwise random start leads to converging on poor VQ extries
 vq = np.array([[1.0,1.0,-1.0,-1.0],[1.0,-1.0,1.0,-1.0]])/10
-print(vq)
 w = vqvae.get_layer('vqvae').set_weights([vq])
 
 history = vqvae.fit(x_train, x_train,
                     batch_size=batch_size, epochs=epochs,
                     validation_split=validation_split,
                     callbacks=[esc])
-w = vqvae.get_layer('vqvae').get_weights()
-print(w)
-w = np.array(w[0].shape)
-print(w)
+vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
 plt.scatter(x_train[:,0],x_train[:,1])
-#plt.show()
+plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
+plt.show()
 exit()
 
 # Plot training results.
