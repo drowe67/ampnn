@@ -32,6 +32,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Load data.
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
+
 '''
 # Normalize data.
 x_test = x_test / np.max(x_train)
@@ -45,9 +46,9 @@ x_test = x_test.reshape(-1, 28, 28, 1)
 y_train = to_categorical(y_train)
 y_test = to_categorical(y_test)
 '''
+
 # Target dictionary.
 target_dict = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
-
 
 
 image_size = x_train.shape[1]
@@ -57,7 +58,7 @@ x_test = np.reshape(x_test, [-1, original_dim])
 x_train = x_train.astype('float32') / 255
 x_test = x_test.astype('float32') / 255
 
-print(x_test.shape)
+print(x_test.shape, np.max(x_test))
 
 # VQ layer.
 class VQVAELayer(Layer):
@@ -166,6 +167,7 @@ enc_inputs = enc
 enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(enc)
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 data_variance = np.var(x_train)
+print("data_variance: %d" % (data_variance))
 loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
 
 '''
