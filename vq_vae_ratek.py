@@ -120,6 +120,7 @@ else:
     print(nb_samples)
     train = features[:nb_samples*dec,:].reshape((nb_samples, nb_features))
 
+
 # Hyper Parameters.
 epochs = 20
 batch_size = 64
@@ -139,17 +140,18 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
 # Encoder
 input_shape = (nb_features, )
 inputs = Input(shape=input_shape, name='encoder_input')
-# dummy encoder layer, this would normally be dense/conv
 enc = Dense(intermediate_dim, activation='relu')(inputs)
 enc = Dense(embedding_dim, activation='relu')(enc)
 enc_inputs = enc
 enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(enc)
-# transparent layer (input = output), but stop any weights being changed based on VQ error.  I think
+
+# transparent layer (input = output), but stop any weights being changed based on VQ error.  I think.
+# Is this how the gradients are copied from the decoder output the decoder input? 
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
 # Decoder
 x = Dense(intermediate_dim, activation='relu')(x)
-x = Dense(eband_K)(x)
+x = Dense(nb_features)(x)
 
 # Autoencoder.
 vqvae = Model(inputs, x)
@@ -164,31 +166,60 @@ history = vqvae.fit(train, train,
                     validation_split=validation_split,
                     callbacks=[esc])
 
-def calc_var(train, train_est, nb_samples, nb_features, dec):
-    mse = np.zeros(nb_samples-dec)
-    e1 = 0
+# Plot training results
+
+loss = history.history['loss'] 
+val_loss = history.history['val_loss']
+num_epochs = range(1, 1 + len(history.history['loss'])) 
+
+plt.figure(1)
+plt.plot(num_epochs, loss, label='Training loss')
+plt.plot(num_epochs, val_loss, label='Validation loss') 
+
+plt.title('Training and validation loss')
+plt.show(block=False)
+
+# Calculate total mean square error and mse per frame
+
+def calc_mse(train, train_est, nb_samples, nb_features, dec):
+    msepf = np.zeros(nb_samples-dec)
+    e1 = 0; n = 0
     for i in range(nb_samples-dec):
         e = (10*train_est[i,:] - 10*train[i,:])**2
-        mse[i] = np.mean(e)
-        e1 += np.sum(e)
-    var = e1/(nb_samples*nb_features)
-    return var
+        msepf[i] = np.mean(e)
+        e1 += np.sum(e); n += nb_features
+    mse = e1/n
+    return mse, msepf
 
 train_est = vqvae.predict(train, batch_size=batch_size)
-print("var: %4.2f dB*dB" % (calc_var(train, train_est, nb_samples, nb_features, dec)))
+mse,msepf = calc_mse(train, train_est, nb_samples, nb_features, dec)
+print("mse: %4.2f dB*dB" % (mse))
+plt.figure(2)
+plt.plot(msepf)
+def reject_outliers(data, m=2):
+    return data[abs(data - np.mean(data)) < m * np.std(data)]
+plt.figure(3)
+plt.hist(reject_outliers(msepf), bins='fd')
 
-# plot input/output spectra
+# plot input/output spectra for a few frames to sanity check
 
-frame=100
 nb_plots = 8
+frames=range(100,100+nb_plots)
+print(frames)
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
-plt.figure(1)
+plt.figure(4)
 plt.tight_layout()
 plt.title('Rate K Amplitude Spectra')
 for r in range(nb_plots):
     plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = frame+r;
+    f = frames[r];
     plt.plot(10*train[f,:],'g')
     plt.plot(10*train_est[f,:],'r')
     plt.ylim(0,80)
-plt.show()
+    a_mse = np.mean(np.sum((10*train[f,:]-10*train_est[f,:])**2))
+    t = "f: %d %3.1f" % (f, a_mse)
+    plt.title(t)
+plt.show(block=False)
+
+plt.waitforbuttonpress(0)
+plt.close()
