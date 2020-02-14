@@ -12,15 +12,13 @@ latent vector from a Gaussian distribution with mean=0 and std=1.
 [1] Kingma, Diederik P., and Max Welling.
 "Auto-encoding variational bayes."
 https://arxiv.org/abs/1312.6114
-'''
 
-'''
   Modified for explerimenstwith rate K vectors:
   usage:
 
   $ ./variational_autoencoder.py all_speech_8k.f32 --epochs 5 --latent_dim 10
 
-```
+'''
 
 from __future__ import absolute_import
 from __future__ import division
