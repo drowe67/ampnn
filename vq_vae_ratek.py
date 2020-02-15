@@ -120,6 +120,12 @@ else:
     print(nb_samples)
     train = features[:nb_samples*dec,:].reshape((nb_samples, nb_features))
 
+train_mean = np.mean(train,axis=0)
+train_std = np.std(train,axis=0)
+# VQ training seems to work much faster with non-zero mean
+train -= train_mean
+print(train_mean)
+print(train_std)
 
 # Hyper Parameters.
 epochs = 20
@@ -127,7 +133,7 @@ batch_size = 64
 validation_split = 0.1
 
 # VQ-VAE Hyper Parameters.
-intermediate_dim = 512
+intermediate_dim = 16
 embedding_dim =  args.embedding_dim     
 num_embeddings = args.num_embedding     
 commitment_cost = 0.25                  # Controls the weighting of the loss terms.
@@ -140,18 +146,22 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
 # Encoder
 input_shape = (nb_features, )
 inputs = Input(shape=input_shape, name='encoder_input')
+'''
 enc = Dense(intermediate_dim, activation='relu')(inputs)
 enc = Dense(embedding_dim, activation='relu')(enc)
-enc_inputs = enc
-enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(enc)
+'''
+enc_inputs = inputs
+enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(inputs)
 
 # transparent layer (input = output), but stop any weights being changed based on VQ error.  I think.
 # Is this how the gradients are copied from the decoder output the decoder input? 
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
 # Decoder
+'''
 x = Dense(intermediate_dim, activation='relu')(x)
 x = Dense(nb_features)(x)
+'''
 
 # Autoencoder.
 vqvae = Model(inputs, x)
@@ -163,8 +173,7 @@ plot_model(vqvae, to_file='vq_vae_ratek.png', show_shapes=True)
 
 history = vqvae.fit(train, train,
                     batch_size=batch_size, epochs=args.epochs,
-                    validation_split=validation_split,
-                    callbacks=[esc])
+                    validation_split=validation_split)
 
 # Plot training results
 
@@ -213,12 +222,23 @@ plt.title('Rate K Amplitude Spectra')
 for r in range(nb_plots):
     plt.subplot(nb_plotsy,nb_plotsx,r+1)
     f = frames[r];
-    plt.plot(10*train[f,:],'g')
-    plt.plot(10*train_est[f,:],'r')
+    plt.plot(10*(train_mean+train[f,:]),'g')
+    plt.plot(10*(train_mean+train_est[f,:]),'r')
     plt.ylim(0,80)
-    a_mse = np.mean(np.sum((10*train[f,:]-10*train_est[f,:])**2))
+    a_mse = np.mean((10*train[f,:]-10*train_est[f,:])**2)
     t = "f: %d %3.1f" % (f, a_mse)
     plt.title(t)
+plt.show(block=False)
+
+# plot spaces
+
+plt.figure(5)
+plt.scatter(train[:,0], train[:,1])
+vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
+plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
+plt.show(block=False)
+plt.figure(6)
+plt.hist2d(train[:,0],train[:,1], bins=(50,50))
 plt.show(block=False)
 
 plt.waitforbuttonpress(0)
