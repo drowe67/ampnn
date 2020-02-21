@@ -4,6 +4,13 @@
   https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
 
   Trying to perform rate K vector quantisation using a VQ VAE
+
+  ~/codec2/build_linux/misc/extract -s 0 -e 1 -t 14 all_speech_8k.f32 all_speech_8k_0_1.f32
+
+  Just first energy bands as a test:
+
+  ~/codec2/build_linux/misc/extract -s 0 -e 1 -t 14 all_speech_8k.f32 all_speech_8k_0_1.f32
+  ./vq_vae_ratek.py all_speech_8k_0_1.f32 --epochs 5 --eband_K 2 --embedding_dim 2
 """
 
 # Imports.
@@ -86,6 +93,7 @@ def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
         return recon_loss + loss
     return vq_vae_loss
 
+
 parser = argparse.ArgumentParser(description='Variational Autoencoder for rate K eband vectors')
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('--epochs', type=int, default=25, help='Number of training epochs')
@@ -99,6 +107,18 @@ args = parser.parse_args()
 eband_K = args.eband_K
 dec = args.dec
 nb_features = eband_K*dec
+
+# Hyper Parameters.
+train_scale = 0.25
+epochs = 20
+batch_size = 64
+validation_split = 0.1
+
+# VQ-VAE Hyper Parameters.
+intermediate_dim = 16
+embedding_dim =  args.embedding_dim     
+num_embeddings = args.num_embedding     
+commitment_cost = 0.25                  # Controls the weighting of the loss terms.
 
 # read in rate K vectors
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
@@ -115,28 +135,16 @@ if args.overlap:
             st = d*eband_K
             train[i,st:st+eband_K] = features[i+d,:]
 else:
-    print(features.shape)
     nb_samples = int(nb_samples/dec)
-    print(nb_samples)
     train = features[:nb_samples*dec,:].reshape((nb_samples, nb_features))
 
 train_mean = np.mean(train,axis=0)
-train_std = np.std(train,axis=0)
-# VQ training seems to work much faster with non-zero mean
-train -= train_mean
-print(train_mean)
-print(train_std)
 
-# Hyper Parameters.
-epochs = 20
-batch_size = 64
-validation_split = 0.1
+# This scaling makes input vectors zero mean and in tanh -1 to +1
+# range.  VQ training also works better with zero mean
 
-# VQ-VAE Hyper Parameters.
-intermediate_dim = 16
-embedding_dim =  args.embedding_dim     
-num_embeddings = args.num_embedding     
-commitment_cost = 0.25                  # Controls the weighting of the loss terms.
+train = train_scale*(train-train_mean)
+print(train_mean, np.amax(train,axis=0), np.amin(train,axis=0))
 
 # EarlyStoppingCallback.
 esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
@@ -150,8 +158,13 @@ inputs = Input(shape=input_shape, name='encoder_input')
 enc = Dense(intermediate_dim, activation='relu')(inputs)
 enc = Dense(embedding_dim, activation='relu')(enc)
 '''
-enc_inputs = inputs
-enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(inputs)
+
+enc = Dense(embedding_dim, activation='tanh')(inputs)
+enc_inputs = enc
+encoder = Model(inputs, enc)
+encoder.summary()
+#vqinit = keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=None)
+enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(enc)
 
 # transparent layer (input = output), but stop any weights being changed based on VQ error.  I think.
 # Is this how the gradients are copied from the decoder output the decoder input? 
@@ -162,6 +175,8 @@ x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="enc
 x = Dense(intermediate_dim, activation='relu')(x)
 x = Dense(nb_features)(x)
 '''
+x = Dense(eband_K, activation='tanh')(x)
+x = Dense(eband_K)(x)
 
 # Autoencoder.
 vqvae = Model(inputs, x)
@@ -170,6 +185,8 @@ loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_ratek.png', show_shapes=True)
+vq_entries_init = vqvae.get_layer('vqvae').get_weights()[0]
+#print(vq_entries_init)
 
 history = vqvae.fit(train, train,
                     batch_size=batch_size, epochs=args.epochs,
@@ -222,8 +239,8 @@ plt.title('Rate K Amplitude Spectra')
 for r in range(nb_plots):
     plt.subplot(nb_plotsy,nb_plotsx,r+1)
     f = frames[r];
-    plt.plot(10*(train_mean+train[f,:]),'g')
-    plt.plot(10*(train_mean+train_est[f,:]),'r')
+    plt.plot(10*(train_mean+train[f,:]/train_scale),'g')
+    plt.plot(10*(train_mean+train_est[f,:]/train_scale),'r')
     plt.ylim(0,80)
     a_mse = np.mean((10*train[f,:]-10*train_est[f,:])**2)
     t = "f: %d %3.1f" % (f, a_mse)
@@ -233,12 +250,14 @@ plt.show(block=False)
 # plot spaces
 
 plt.figure(5)
-plt.scatter(train[:,0], train[:,1])
+encoder_out = encoder.predict(train, batch_size=batch_size)
+plt.scatter(encoder_out[:,0], encoder_out[:,1])
 vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
 plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
+#plt.scatter(vq_entries_init[0,:],vq_entries_init[1,:], marker='o')
 plt.show(block=False)
 plt.figure(6)
-plt.hist2d(train[:,0],train[:,1], bins=(50,50))
+plt.hist2d(encoder_out[:,0],encoder_out[:,1], bins=(50,50))
 plt.show(block=False)
 
 plt.waitforbuttonpress(0)
