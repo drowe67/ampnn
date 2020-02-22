@@ -3,14 +3,15 @@
   From: VQ-VAE_Keras_MNIST_Example.ipynb
   https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
 
-  Trying to perform rate K vector quantisation using a VQ VAE
+  Trying to perform rate K vector quantisation using a VQ VAE.  4D
+  test with simple Dense layers on enc and dec side:
 
-  ~/codec2/build_linux/misc/extract -s 0 -e 1 -t 14 all_speech_8k.f32 all_speech_8k_0_1.f32
+    ~/codec2/build_linux/src/c2sim ~/Downloads/all_speech_8k.sw --bands all_speech_8k.f32 --modelout all_speech_8k.model --bands_lower 1
+    ~/codec2/build_linux/misc/extract -s 0 -e 3 -t 14 all_speech_8k.f32 all_speech_8k_0_3.f32
+    ./vq_vae_ratek.py all_speech_8k_0_3.f32 --epochs 1 --eband_K 4 --embedding_dim 4
 
-  Just first energy bands as a test:
+  Note best results obtained with just 1 epoch.
 
-  ~/codec2/build_linux/misc/extract -s 0 -e 1 -t 14 all_speech_8k.f32 all_speech_8k_0_1.f32
-  ./vq_vae_ratek.py all_speech_8k_0_1.f32 --epochs 5 --eband_K 2 --embedding_dim 2
 """
 
 # Imports.
@@ -108,14 +109,14 @@ eband_K = args.eband_K
 dec = args.dec
 nb_features = eband_K*dec
 
-# Hyper Parameters.
-train_scale = 0.25
+# Hyper Parameters
+train_scale = 0.125
 epochs = 20
 batch_size = 64
 validation_split = 0.1
 
 # VQ-VAE Hyper Parameters.
-intermediate_dim = 16
+intermediate_dim = 128
 embedding_dim =  args.embedding_dim     
 num_embeddings = args.num_embedding     
 commitment_cost = 0.25                  # Controls the weighting of the loss terms.
@@ -142,7 +143,6 @@ train_mean = np.mean(train,axis=0)
 
 # This scaling makes input vectors zero mean and in tanh -1 to +1
 # range.  VQ training also works better with zero mean
-
 train = train_scale*(train-train_mean)
 print(train_mean, np.amax(train,axis=0), np.amin(train,axis=0))
 
@@ -154,12 +154,9 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
 # Encoder
 input_shape = (nb_features, )
 inputs = Input(shape=input_shape, name='encoder_input')
-'''
-enc = Dense(intermediate_dim, activation='relu')(inputs)
-enc = Dense(embedding_dim, activation='relu')(enc)
-'''
 
 enc = Dense(embedding_dim, activation='tanh')(inputs)
+
 enc_inputs = enc
 encoder = Model(inputs, enc)
 encoder.summary()
@@ -170,19 +167,14 @@ enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(e
 # Is this how the gradients are copied from the decoder output the decoder input? 
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
-# Decoder
-'''
-x = Dense(intermediate_dim, activation='relu')(x)
-x = Dense(nb_features)(x)
-'''
-x = Dense(eband_K, activation='tanh')(x)
-x = Dense(eband_K)(x)
+x = Dense(embedding_dim, activation='tanh')(x)
 
 # Autoencoder.
 vqvae = Model(inputs, x)
 data_variance = np.var(train)
 loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
-vqvae.compile(loss=loss, optimizer='adam')
+adam = keras.optimizers.Adam(lr=0.001)
+vqvae.compile(loss=loss, optimizer=adam)
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_ratek.png', show_shapes=True)
 vq_entries_init = vqvae.get_layer('vqvae').get_weights()[0]
@@ -218,7 +210,7 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
     return mse, msepf
 
 train_est = vqvae.predict(train, batch_size=batch_size)
-mse,msepf = calc_mse(train, train_est, nb_samples, nb_features, dec)
+mse,msepf = calc_mse(train/train_scale, train_est/train_scale, nb_samples, nb_features, dec)
 print("mse: %4.2f dB*dB" % (mse))
 plt.figure(2)
 plt.plot(msepf)
@@ -242,7 +234,7 @@ for r in range(nb_plots):
     plt.plot(10*(train_mean+train[f,:]/train_scale),'g')
     plt.plot(10*(train_mean+train_est[f,:]/train_scale),'r')
     plt.ylim(0,80)
-    a_mse = np.mean((10*train[f,:]-10*train_est[f,:])**2)
+    a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
     t = "f: %d %3.1f" % (f, a_mse)
     plt.title(t)
 plt.show(block=False)
