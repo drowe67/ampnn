@@ -42,7 +42,7 @@ parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length
 args = parser.parse_args()
 
 eband_K = args.eband_K
-nb_timesteps = 10
+nb_timesteps = 8
 train_scale = 0.125
 
 # read in rate K vectors
@@ -71,6 +71,11 @@ print(train[1,0,:])
 model = models.Sequential()
 model.add(layers.Conv1D(32, 3, activation='relu', padding='same', input_shape=(nb_timesteps, eband_K)))
 model.add(layers.MaxPooling1D(pool_size=2, padding='same'))
+model.add(layers.Conv1D(16, 3, activation='relu', padding='same'))
+model.add(layers.MaxPooling1D(pool_size=2, padding='same'))
+
+model.add(layers.UpSampling1D(size=2))
+model.add(layers.Conv1D(16, 3, activation='relu', padding='same'))
 model.add(layers.UpSampling1D(size=2))
 model.add(layers.Conv1D(32, 3, activation='relu', padding='same'))
 model.add(layers.Conv1D(eband_K, 3, padding='same'))
