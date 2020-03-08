@@ -123,15 +123,31 @@ plt.plot(msepf)
 plt.figure(3)
 def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
-plt.hist(reject_outliers(msepf), bins='fd')
+plt.hist(reject_outliers(msepf), bins='fd', density=True)
+plt.figure(4)
+plt.hist(reject_outliers(msepf), bins='fd', density=True, cumulative=True)
 
 # plot input/output spectra for a few frames to sanity check
 
-plt.figure(4)
-nb_plots = 6
+def plot_ampl_spectra(nb_plots, frames, orig, est):
+    nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
+    plt.tight_layout()
+    plt.title('Rate K Amplitude Spectra')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frames[r];
+        plt.plot(10*(train_mean+train[f,:]/train_scale),'g')
+        plt.plot(10*(train_mean+train_est[f,:]/train_scale),'r')
+        plt.ylim(0,80)
+        a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
+        t = "f: %d %3.1f" % (f, a_mse)
+        plt.title(t)
+    plt.show(block=False)
+
+nb_plots = 8
 worst_frames = np.argsort(msepf)
-one_bad_per_minute = int(nb_samples*2E-4)
-print("one bad per minute thresh %d %5.2f dB*dB\n" % (one_bad_per_minute, msepf[worst_frames[-one_bad_per_minute]]))
+one_bad_per_10s = int(nb_samples*1E-3)
+print("one bad per 10s %d %5.2f dB*dB\n" % (one_bad_per_10s, msepf[worst_frames[-one_bad_per_10s]]))
 if args.plot_worst:
     frames = worst_frames[-nb_plots:]
 elif args.plot_random:
@@ -139,21 +155,25 @@ elif args.plot_random:
 else:
     frames = range(100,100+nb_plots)
 print(frames)
-nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
 
-plt.tight_layout()
-plt.title('Rate K Amplitude Spectra')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = frames[r];
-    plt.plot(10*(train_mean+train[f,:]/train_scale),'g')
-    plt.plot(10*(train_mean+train_est[f,:]/train_scale),'r')
-    plt.ylim(0,80)
-    a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
-    t = "f: %d %3.1f" % (f, a_mse)
-    plt.title(t)
-plt.show(block=False)
-
+if args.plot_worst:
+    # lets look into chunk around worst frame
+    plt.figure(5)
+    f1 = nb_timesteps*int(frames[0]/nb_timesteps) + np.arange(0,nb_plots)
+    plot_ampl_spectra(nb_plots, f1, train_mean+train/train_scale, train_mean+train_est/train_scale)
+    plt.figure(6)
+    f2 = nb_timesteps*int(frames[1]/nb_timesteps) + np.arange(0,nb_plots)
+    plot_ampl_spectra(nb_plots, f2, train_mean+train/train_scale, train_mean+train_est/train_scale)
+    plt.figure(7)
+    f2 = nb_timesteps*int(frames[2]/nb_timesteps) + np.arange(0,nb_plots)
+    plot_ampl_spectra(nb_plots, f2, train_mean+train/train_scale, train_mean+train_est/train_scale)
+    plt.figure(8)
+    f2 = nb_timesteps*int(frames[3]/nb_timesteps) + np.arange(0,nb_plots)
+    plot_ampl_spectra(nb_plots, f2, train_mean+train/train_scale, train_mean+train_est/train_scale)
+else:
+    plt.figure(5)
+    plot_ampl_spectra(nb_plots, frames, train_mean+train/train_scale, train_mean+train_est/train_scale)
+ 
 print("Click on last figure to finish....")
 plt.waitforbuttonpress(0)
 plt.close()
