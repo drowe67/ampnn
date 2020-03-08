@@ -39,6 +39,8 @@ parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('--epochs', type=int, default=25, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
+parser.add_argument('--plot_worst', action='store_true', help='plot worst vectors')
+parser.add_argument('--plot_random', action='store_true', help='plot set of random vectors')
 args = parser.parse_args()
 
 eband_K = args.eband_K
@@ -117,17 +119,25 @@ print("mse: %4.2f dB*dB" % (mse))
 
 plt.figure(2)
 plt.plot(msepf)
-def reject_outliers(data, m=2):
-    return data[abs(data - np.mean(data)) < m * np.std(data)]
 
 plt.figure(3)
+def reject_outliers(data, m=2):
+    return data[abs(data - np.mean(data)) < m * np.std(data)]
 plt.hist(reject_outliers(msepf), bins='fd')
 
 # plot input/output spectra for a few frames to sanity check
 
 plt.figure(4)
-nb_plots = 8
-frames=range(100,100+nb_plots)
+nb_plots = 6
+worst_frames = np.argsort(msepf)
+one_bad_per_minute = int(nb_samples*2E-4)
+print("one bad per minute thresh %d %5.2f dB*dB\n" % (one_bad_per_minute, msepf[worst_frames[-one_bad_per_minute]]))
+if args.plot_worst:
+    frames = worst_frames[-nb_plots:]
+elif args.plot_random:
+    frames = np.random.randint(0, nb_samples, nb_plots)
+else:
+    frames = range(100,100+nb_plots)
 print(frames)
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
 
