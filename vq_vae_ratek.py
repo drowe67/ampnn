@@ -27,6 +27,7 @@ from keras.layers import Input, Layer, Dense, Lambda, Reshape
 from keras import losses
 from keras import backend as K
 from keras.utils import plot_model
+from keras.callbacks import LambdaCallback
 
 import os
 
@@ -173,16 +174,25 @@ x = Dense(embedding_dim, activation='tanh')(x)
 vqvae = Model(inputs, x)
 data_variance = np.var(train)
 loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
-adam = keras.optimizers.Adam(lr=0.001)
+adam = keras.optimizers.Adam(lr=0.0001)
 vqvae.compile(loss=loss, optimizer=adam)
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_ratek.png', show_shapes=True)
 vq_entries_init = vqvae.get_layer('vqvae').get_weights()[0]
-#print(vq_entries_init)
+
+# Callback to plot VQ entries as they evolve
+def cb():
+    vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
+    plt.figure(5)
+    plt.clf()
+    plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
+    plt.draw()
+    plt.pause(0.001)
+print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
 
 history = vqvae.fit(train, train,
                     batch_size=batch_size, epochs=args.epochs,
-                    validation_split=validation_split)
+                    validation_split=validation_split, callbacks = [print_weights])
 
 # Plot training results
 
