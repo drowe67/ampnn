@@ -3,14 +3,12 @@
   From: VQ-VAE_Keras_MNIST_Example.ipynb
   https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
 
-  Trying to perform rate K vector quantisation using a VQ VAE.  4D
-  test with simple Dense layers on enc and dec side:
+  Trying to perform rate K vector quantisation using a VQ VAE and conv1D. However struggled to get reasonable results:
 
     ~/codec2/build_linux/src/c2sim ~/Downloads/all_speech_8k.sw --bands all_speech_8k.f32 --modelout all_speech_8k.model --bands_lower 1
-    ~/codec2/build_linux/misc/extract -s 0 -e 3 -t 14 all_speech_8k.f32 all_speech_8k_0_3.f32
-    ./vq_vae_ratek.py all_speech_8k_0_3.f32 --epochs 1 --eband_K 4 --embedding_dim 4
+    ./vq_vae_ratek_conv1d.py all_speech_8k.f32 --embedding_dim 8 --epochs 10 --num_embedding 1024
 
-  Note best results obtained with just 1 epoch.
+  Yielded about 14*15 dB*dB
 
 """
 
@@ -86,7 +84,7 @@ class VQVAELayer(Layer):
 # Calculate vq-vae loss.
 def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
     def vq_vae_loss(x, x_hat):
-        recon_loss = losses.mse(x, x_hat) / data_variance
+        recon_loss = losses.mse(x, x_hat)/data_variance
         
         e_latent_loss = K.mean((K.stop_gradient(quantized) - x_inputs) ** 2)
         q_latent_loss = K.mean((quantized - K.stop_gradient(x_inputs)) ** 2)
@@ -118,7 +116,6 @@ validation_split = 0.1
 nb_timesteps = 8
 
 # VQ-VAE Hyper Parameters.
-intermediate_dim = 128
 embedding_dim =  args.embedding_dim     
 num_embeddings = args.num_embedding     
 commitment_cost = 0.25                  # Controls the weighting of the loss terms.
@@ -129,21 +126,25 @@ nb_samples = int(len(features)/eband_K)
 nb_chunks = int(nb_samples/nb_timesteps)
 nb_samples = nb_chunks*nb_timesteps
 print("nb_samples: %d" % (nb_samples))
-train = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
+features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 
-train_mean = np.mean(train, axis=0)
-train -= train_mean
-train *= train_scale
+train_mean = np.mean(features, axis=0)
+features -= train_mean
+features *= train_scale
 
-print(train.shape)
-print(train[0,:])
-print(train[nb_timesteps,:])
+print(features.shape)
+#print(train[0,:])
+#print(train[nb_timesteps,:])
 
 # reshape into (batch, timesteps, channels) for conv1D
-train = train[:nb_samples,:].reshape(nb_chunks, nb_timesteps, eband_K)
-print(train.shape)
-print(train[0,0,:])
-print(train[1,0,:])
+train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps, eband_K)
+for i in range(1,nb_timesteps):
+    print(i,-nb_timesteps+i)
+    features1 = features[i:nb_samples-nb_timesteps+i,:].reshape(nb_chunks-1, nb_timesteps, eband_K)
+    train =  np.concatenate((train,features1))
+
+#print(train[0,0,:])
+#print(train[1,0,:])
 
 # EarlyStoppingCallback.
 esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
@@ -154,27 +155,27 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
 input_shape = (nb_timesteps, nb_features)
 inputs = Input(shape=input_shape, name='encoder_input')
 
-x = Conv1D(32, 3, activation='tanh', padding='same')(inputs)
-x = MaxPooling1D(pool_size=2, padding='same')(x)
-x = Conv1D(16, 3, activation='tanh', padding='same')(x)
-enc = MaxPooling1D(pool_size=2, padding='same')(x)
+#x = Conv1D(16, 3, activation='tanh', padding='same')(inputs)
+#x = MaxPooling1D(pool_size=2, padding='same')(x)
+enc = Conv1D(8, 3, activation='tanh', padding='same')(inputs)
+#enc = MaxPooling1D(pool_size=2, padding='same')(x)
 
 enc_inputs = enc
 encoder = Model(inputs, enc)
 encoder.summary()
 
-enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(enc)
+vqinit = keras.initializers.RandomUniform(minval=-1, maxval=1, seed=None)
+enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae", initializer=vqinit)(enc)
 
 # transparent layer (input = output), but stop any weights being changed based on VQ error.  I think.
 # Is this how the gradients are copied from the decoder output the decoder input? 
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
-x = UpSampling1D(size=2)(x)
-x = Conv1D(16, 3, activation='tanh', padding='same')(x)
-x = UpSampling1D(size=2)(x)
-x = Conv1D(32, 3, activation='tanh', padding='same')(x)
+#x = UpSampling1D(size=2)(x)
+x = Conv1D(8, 3, activation='tanh', padding='same')(x)
+#x = UpSampling1D(size=2)(x)
+#x = Conv1D(16, 3, activation='tanh', padding='same')(x)
 x = Conv1D(eband_K, 3, padding='same')(x)
-
 #x = Dense(embedding_dim, activation='tanh')(x)
 
 # Autoencoder.
@@ -182,11 +183,10 @@ vqvae = Model(inputs, x)
 vqvae.summary()
 data_variance = np.var(train)
 loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
-adam = keras.optimizers.Adam(lr=0.0001)
+adam = keras.optimizers.Adam(lr=0.0002)
 vqvae.compile(loss=loss, optimizer=adam)
 
 plot_model(vqvae, to_file='vq_vae_ratek.png', show_shapes=True)
-vq_entries_init = vqvae.get_layer('vqvae').get_weights()[0]
 
 # Callback to plot VQ entries as they evolve
 def cb():
@@ -195,21 +195,21 @@ def cb():
     plt.clf()
     plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
     plt.draw()
-    plt.pause(0.001)
+    plt.pause(0.0001)
 print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
 
 history = vqvae.fit(train, train,
                     batch_size=batch_size, epochs=args.epochs,
-                    validation_split=validation_split, callbacks = [print_weights])
+                    validation_split=validation_split,callbacks = [print_weights])
 
 # back to original shape
 train_est = vqvae.predict(train, batch_size=batch_size)
 encoder_out = encoder.predict(train, batch_size=batch_size)
-train = train.reshape(nb_samples, eband_K)
-train_est = train_est.reshape(nb_samples, eband_K)
+train = train.reshape(-1, eband_K)
+train_est = train_est.reshape(-1, eband_K)
 print(encoder_out.shape)
-encoder_out = encoder_out.reshape(nb_chunks*2, embedding_dim)
-print(train.shape, nb_samples)
+encoder_out = encoder_out.reshape(-1, embedding_dim)
+print(train.shape, encoder_out.shape)
 
 # Plot training results
 loss = history.history['loss'] 
@@ -270,7 +270,6 @@ plt.figure(5)
 plt.scatter(encoder_out[:,0], encoder_out[:,1])
 vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
 plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
-#plt.scatter(vq_entries_init[0,:],vq_entries_init[1,:], marker='o')
 plt.show(block=False)
 plt.figure(6)
 plt.hist2d(encoder_out[:,0],encoder_out[:,1], bins=(50,50))
