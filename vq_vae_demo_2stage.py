@@ -148,15 +148,8 @@ if args.test == "gaussian":
 
 input_shape = (dim, )
 x = Input(shape=input_shape, name='encoder_input')
-# dummy encoder layer, this would normally be dense/conv
-#x = Lambda(lambda inputs: inputs)(input)
 x1 = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vq1")(x)
-# transparent layer (input = output), but stop any weights being changed based on VQ error
 x2 = Lambda(lambda x1: x + K.stop_gradient(x1 - x), name="encoded")(x1)
-
-# Decoder
-# just to show where decoder layer goes, will be trained to be indentity
-x2 = Dense(2, name='dec_dense')(x2)
 
 # Autoencoder.
 vqvae = Model(x, x2)
