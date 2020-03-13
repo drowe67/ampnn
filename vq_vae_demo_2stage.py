@@ -1,11 +1,10 @@
 #!/usr/bin/python3
 """
-  From: VQ-VAE_Keras_MNIST_Example.ipynb
-  https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
+  Two stage VQ demod adapted from: 
+    VQ-VAE_Keras_MNIST_Example.ipynb
+    https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
 
-  Simple VQ-VAE Keras example:
-
-    $ ./vq__vae_demo.py
+    $ ./vq__vae_demo_2stage.py --num_embedding 16
 
 """
 
@@ -77,29 +76,17 @@ class VQVAELayer(Layer):
         w = K.transpose(self.embeddings.read_value())
         return tf.nn.embedding_lookup(w, encoding_indices, validate_indices=False)
 
-# Calculate vq-vae loss.
-def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized1, x_inputs1, quantized2, x_inputs2):
+# Calculate vq-vae loss including two VQ stages
+def vq_vae_loss_wrapper(commitment_cost, quantized1, x_inputs1, quantized2, x_inputs2):
     def vq_vae_loss(x, x_hat):
-        recon_loss = losses.mse(x, x_hat) / data_variance
+        recon_loss = losses.mse(x, x_hat)
         
         e_latent_loss = K.mean((K.stop_gradient(quantized1) - x_inputs1) ** 2)
         q_latent_loss1 = K.mean((quantized1 - K.stop_gradient(x_inputs1)) ** 2)
         q_latent_loss2 = K.mean((quantized2 - K.stop_gradient(x_inputs2)) ** 2)
         loss = q_latent_loss1 + q_latent_loss2 + commitment_cost * e_latent_loss
         
-        return recon_loss + loss #* beta
-    return vq_vae_loss
-
-# Calculate vq-vae loss.
-def vq_vae_loss_wrapper1(data_variance, commitment_cost, quantized1, x_inputs1):
-    def vq_vae_loss(x, x_hat):
-        recon_loss = losses.mse(x, x_hat) / data_variance
-        
-        e_latent_loss = K.mean((K.stop_gradient(quantized1) - x_inputs1) ** 2)
-        q_latent_loss1 = K.mean((quantized1 - K.stop_gradient(x_inputs1)) ** 2)
-        loss = q_latent_loss1 + q_latent_loss1 + commitment_cost * e_latent_loss
-        
-        return recon_loss + loss #* beta
+        return recon_loss + loss
     return vq_vae_loss
 
 # EarlyStoppingCallback.
@@ -110,10 +97,10 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-3,
 # Callback to plot VQ entries as they evolve
 def cb():
     vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
-    #vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
+    vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
     plt.clf()
     plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='x')
-    #plt.scatter(vq2_weights[0,:],vq2_weights[1,:], marker='x')
+    plt.scatter(vq2_weights[0,:],vq2_weights[1,:], marker='x')
     plt.xlim([-3,3]); plt.ylim([-3,3])
     plt.draw()
     plt.pause(0.0001)
@@ -122,10 +109,10 @@ print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
 # Hyper Parameters.
 batch_size = 64
 validation_split = 0.1
+commitment_cost = 0.25 # Controls the weighting of the loss terms, no effect in this demo
 
 parser = argparse.ArgumentParser(description='VQ training test')
-parser.add_argument('--test', default="qpsk", help='Test to run')
-parser.add_argument('--epochs', type=int, default=20, help='Number of training epochs')
+parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=10000, help='Number of frames to train on')
 parser.add_argument('--embedding_dim', type=int, default=2,  help='dimension of embedding vectors')
 parser.add_argument('--num_embedding', type=int, default=4,  help='number of embedded vectors')
@@ -133,36 +120,26 @@ args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples;
 
-# VQ-VAE Hyper Parameters.
-commitment_cost = 0.25 # Controls the weighting of the loss terms.
-
-if args.test == "qpsk":
-    # a QPSK constellation with noise
-    bits = np.random.randint(2,size=nb_samples*dim).reshape(nb_samples, dim)
-    x_train = 2*bits-1 + 0.1*np.random.randn(nb_samples, dim)
-if args.test == "gaussian":
-    x_train = np.random.randn(nb_samples, dim)
-    print("var = %5.2f" % (np.var(x_train)))
+x_train = np.random.randn(nb_samples, dim)
     
 # Model -------------------------------------
 
 input_shape = (dim, )
 x = Input(shape=input_shape, name='encoder_input')
 x1 = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vq1")(x)
-x2 = Lambda(lambda x1: x + K.stop_gradient(x1 - x), name="encoded")(x1)
+x2 = Lambda(lambda x1: x + K.stop_gradient(x1 - x))(x1)
 
-# Autoencoder.
-vqvae = Model(x, x2)
-data_variance = np.var(x_train)
-loss = vq_vae_loss_wrapper1(data_variance, commitment_cost, x1, x)
+stage1_error = Subtract()([x,x2])
+x3 = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vq2")(stage1_error)
+x4 = Lambda(lambda x3: stage1_error + K.stop_gradient(x3 - stage1_error))(x3)
+
+x5 = Add()([x2,x4])
+
+vqvae = Model(x, x5)
+loss = vq_vae_loss_wrapper(commitment_cost, x1, x, x3, stage1_error)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_demo.png', show_shapes=True)
-
-if args.test == "qpsk":
-    # seed VQ entries otherwise random start leads to converging on poor VQ extries
-    vq = np.array([[1.0,1.0,-1.0,-1.0],[1.0,-1.0,1.0,-1.0]])/10
-    vqvae.get_layer('vqvae').set_weights([vq])
 
 history = vqvae.fit(x_train, x_train,
                     batch_size=batch_size, epochs=args.epochs,
@@ -173,13 +150,11 @@ x_train_est = vqvae.predict(x_train)
 var_start = np.var(x_train)
 var_end = np.var(x_train-x_train_est)
 nb_bits = np.log2(args.num_embedding);
-if nb_bits:
-    var_end_theory = var_start*dim/(2**(2*nb_bits))
-else:
-    var_end_theory = 0
 print("nb_bits: %3.1f var_start: %5.4f var_end: %5.4f %5.4f dB" % (nb_bits, var_start, var_end, 10*np.log10(var_end)))
-plt.scatter(x_train[:,0],x_train[:,1])
 vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
-plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='x')
+vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
+plt.scatter(x_train[:,0],x_train[:,1])
+plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='+',color='blue')
+plt.scatter(vq2_weights[0,:],vq2_weights[1,:], marker='x',color='red')
 plt.show()
 
