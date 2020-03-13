@@ -3,12 +3,16 @@
   From: VQ-VAE_Keras_MNIST_Example.ipynb
   https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
 
-  Simple VQ-VAE Keras example
+  Simple VQ-VAE Keras example:
+
+    $ ./vq__vae_demo.py
+
 """
 
 # Imports.
 import numpy as np
 from matplotlib import pyplot as plt
+import argparse
 
 import tensorflow as tf
 import keras
@@ -18,7 +22,7 @@ from keras.layers import Input, Layer, Dense, Lambda
 from keras import losses
 from keras import backend as K
 from keras.utils import plot_model
-
+from keras.callbacks import LambdaCallback
 import os
 
 # less verbose tensorflow ....
@@ -85,33 +89,53 @@ def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
         return recon_loss + loss #* beta
     return vq_vae_loss
 
-# Hyper Parameters.
-epochs = 20
-batch_size = 64
-validation_split = 0.1
-
-# VQ-VAE Hyper Parameters.
-embedding_dim =  2     # dimension of embedding vectors
-num_embeddings = 4     # VQ size
-commitment_cost = 0.25 # Controls the weighting of the loss terms.
-
 # EarlyStoppingCallback.
-esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
+esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-3,
                                     patience=5, verbose=0, mode='auto',
                                     baseline=None)
 
-# some samples with noise
-nb_samples = 10000;
-bits = np.random.randint(2,size=nb_samples*embedding_dim).reshape(nb_samples, embedding_dim)
-x_train = 2*bits-1 + 0.1*np.random.randn(nb_samples, embedding_dim)
+# Callback to plot VQ entries as they evolve
+def cb():
+    vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
+    plt.clf()
+    plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
+    plt.xlim([-3,3]); plt.ylim([-3,3])
+    plt.draw()
+    plt.pause(0.0001)
+print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
 
+# Hyper Parameters.
+batch_size = 64
+validation_split = 0.1
+
+parser = argparse.ArgumentParser(description='VQ training test')
+parser.add_argument('--test', default="qpsk", help='Test to run')
+parser.add_argument('--epochs', type=int, default=20, help='Number of training epochs')
+parser.add_argument('--nb_samples', type=int, default=10000, help='Number of frames to train on')
+parser.add_argument('--embedding_dim', type=int, default=2,  help='dimension of embedding vectors')
+parser.add_argument('--num_embedding', type=int, default=4,  help='number of embedded vectors')
+args = parser.parse_args()
+dim = args.embedding_dim
+nb_samples = args.nb_samples;
+
+# VQ-VAE Hyper Parameters.
+commitment_cost = 0.25 # Controls the weighting of the loss terms.
+
+if args.test == "qpsk":
+    # a QPSK constellation with noise
+    bits = np.random.randint(2,size=nb_samples*dim).reshape(nb_samples, dim)
+    x_train = 2*bits-1 + 0.1*np.random.randn(nb_samples, dim)
+if args.test == "gaussian":
+    x_train = np.random.randn(nb_samples, dim)
+    print("var = %5.2f" % (np.var(x_train)))
+    
 # Encoder
-input_shape = (embedding_dim, )
+input_shape = (dim, )
 inputs = Input(shape=input_shape, name='encoder_input')
 # dummy encoder layer, this would normally be dense/conv
 enc = Lambda(lambda inputs: inputs)(inputs)
 enc_inputs = enc
-enc = VQVAELayer(embedding_dim, num_embeddings, commitment_cost, name="vqvae")(enc)
+enc = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vqvae")(enc)
 # transparent layer (input = output), but stop any weights being changed based on VQ error
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
@@ -127,17 +151,28 @@ vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_demo.png', show_shapes=True)
 
-# seed VQ entries otherwise random start leads to converging on poor VQ extries
-vq = np.array([[1.0,1.0,-1.0,-1.0],[1.0,-1.0,1.0,-1.0]])/10
-vqvae.get_layer('vqvae').set_weights([vq])
+if args.test == "qpsk":
+    # seed VQ entries otherwise random start leads to converging on poor VQ extries
+    vq = np.array([[1.0,1.0,-1.0,-1.0],[1.0,-1.0,1.0,-1.0]])/10
+    vqvae.get_layer('vqvae').set_weights([vq])
 
 history = vqvae.fit(x_train, x_train,
-                    batch_size=batch_size, epochs=epochs,
+                    batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,
-                    callbacks=[esc])
+                    callbacks=[esc,print_weights])
 vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
+
+x_train_est = vqvae.predict(x_train)
+var_start = np.var(x_train)
+var_end = np.var(x_train-x_train_est)
+nb_bits = np.log2(args.num_embedding);
+if nb_bits:
+    var_end_theory = var_start*dim/(2**(2*nb_bits))
+else:
+    var_end_theory = 0
+print("nb_bits: %3.1f var_start: %5.4f var_end: %5.4f %5.4f dB" % (nb_bits, var_start, var_end, 10*np.log10(var_end)))
 plt.scatter(x_train[:,0],x_train[:,1])
 plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
-print(vqvae.get_layer('dec_dense').get_weights()[0])
+#print(vqvae.get_layer('dec_dense').get_weights()[0])
 plt.show()
 
