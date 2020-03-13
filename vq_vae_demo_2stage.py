@@ -147,10 +147,9 @@ if args.test == "gaussian":
 # Model -------------------------------------
 
 input_shape = (dim, )
-input = Input(shape=input_shape, name='encoder_input')
+x = Input(shape=input_shape, name='encoder_input')
 # dummy encoder layer, this would normally be dense/conv
-x = Lambda(lambda inputs: inputs)(input)
-#enc_inputs = enc
+#x = Lambda(lambda inputs: inputs)(input)
 x1 = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vq1")(x)
 # transparent layer (input = output), but stop any weights being changed based on VQ error
 x2 = Lambda(lambda x1: x + K.stop_gradient(x1 - x), name="encoded")(x1)
@@ -160,7 +159,7 @@ x2 = Lambda(lambda x1: x + K.stop_gradient(x1 - x), name="encoded")(x1)
 x2 = Dense(2, name='dec_dense')(x2)
 
 # Autoencoder.
-vqvae = Model(input, x2)
+vqvae = Model(x, x2)
 data_variance = np.var(x_train)
 loss = vq_vae_loss_wrapper1(data_variance, commitment_cost, x1, x)
 vqvae.compile(loss=loss, optimizer='adam')
