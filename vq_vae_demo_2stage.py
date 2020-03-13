@@ -139,7 +139,7 @@ vqvae = Model(x, x5)
 loss = vq_vae_loss_wrapper(commitment_cost, x1, x, x3, stage1_error)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
-plot_model(vqvae, to_file='vq_vae_demo.png', show_shapes=True)
+plot_model(vqvae, to_file='vq_vae_demo_2stage.png', show_shapes=True)
 
 history = vqvae.fit(x_train, x_train,
                     batch_size=batch_size, epochs=args.epochs,
