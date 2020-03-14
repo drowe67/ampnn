@@ -92,19 +92,18 @@ def vq_vae_loss_wrapper(data_var, commitment_cost, quantized1, x_inputs1, quanti
     return vq_vae_loss
 
 # EarlyStoppingCallback.
-esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-3,
+esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
                                     patience=5, verbose=0, mode='auto',
                                     baseline=None)
 
-# Callback to plot VQ entries as they evolve
 def cb():
     vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
     vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
     plt.figure(5)
     plt.clf()
-    plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='x')
-    plt.scatter(vq2_weights[0,:],vq2_weights[1,:], marker='x')
-    plt.xlim([-1,1]); plt.ylim([-1,1])
+    plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='X', color="red")
+    plt.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='x')
+    plt.xlim([-1.5,1.5]); plt.ylim([-1.5,1.5])
     plt.draw()
     plt.pause(0.0001)
 print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
@@ -120,7 +119,7 @@ parser = argparse.ArgumentParser(description='Two stage VQ-VAE for rate K vector
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs')
 parser.add_argument('--eband_K', type=int, default=14, help='Length of eband vector')
-parser.add_argument('--nb_samples', type=int, default=10000, help='Number of frames to train on')
+parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--embedding_dim', type=int, default=2,  help='dimension of embedding vectors')
 parser.add_argument('--num_embedding', type=int, default=128,  help='number of embedded vectors')
 args = parser.parse_args()
@@ -164,7 +163,8 @@ encoder = Model(inputs, x)
 encoder.summary()
 
 # Two stage Vector Quantiser
-x1 = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vq1")(x)
+vqinit = keras.initializers.RandomUniform(minval=-0.5, maxval=0.5, seed=None)
+x1 = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vq1", initializer=vqinit)(x)
 x2 = Lambda(lambda x1: x + K.stop_gradient(x1 - x))(x1)
 
 stage1_error = Subtract()([x,x2])
@@ -182,7 +182,7 @@ y = Conv1D(eband_K, 3, padding='same')(y)
 vqvae = Model(inputs, y)
 data_var = np.var(train)
 loss = vq_vae_loss_wrapper(data_var, commitment_cost, x1, x, x3, stage1_error)
-adam = keras.optimizers.Adam(lr=0.0002)
+adam = keras.optimizers.Adam(lr=0.001)
 vqvae.compile(loss=loss, optimizer=adam)
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_conv1d_2stage.png', show_shapes=True)
@@ -190,7 +190,7 @@ plot_model(vqvae, to_file='vq_vae_conv1d_2stage.png', show_shapes=True)
 history = vqvae.fit(train, train,
                     batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,
-                    callbacks=[esc,print_weights])
+                    callbacks=[print_weights])
 
 # back to original shape
 train_est = vqvae.predict(train, batch_size=batch_size)
@@ -260,8 +260,8 @@ fig,ax = plt.subplots()
 ax.hist2d(encoder_out[:,0],encoder_out[:,1], bins=(50,50))
 vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
 vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
-ax.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='x')
-ax.scatter(vq2_weights[0,:],vq2_weights[1,:], marker='x')
+ax.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='X', color="red")
+ax.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='x')
 plt.show(block=False)
 
 plt.waitforbuttonpress(0)
