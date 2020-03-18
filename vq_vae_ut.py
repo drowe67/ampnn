@@ -96,16 +96,6 @@ def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
         return recon_loss + loss #* beta
     return vq_vae_loss
 
-# Callback to plot VQ entries as they evolve
-def cb():
-    vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
-    plt.clf()
-    plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
-    plt.xlim([-3,3]); plt.ylim([-3,3])
-    plt.draw()
-    plt.pause(0.0001)
-print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
-
 # Hyper Parameters.
 batch_size = 2
 commitment_cost = 0.25 # Controls the weighting of the loss terms.
@@ -123,20 +113,12 @@ x_train = b = np.asarray([[1,1],
                           [-1,-1]])
     
 # Encoder
-input_shape = (dim, )
-inputs = Input(shape=input_shape, name='encoder_input')
-# dummy encoder layer, this would normally be dense/conv
-enc = Lambda(lambda inputs: inputs)(inputs)
-enc_inputs = enc
-enc = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vqvae")(enc)
+inputs = Input(shape=(dim, ), name='encoder_input')
+enc_inputs = inputs
+enc = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vqvae")(inputs)
 # transparent layer (input = output), but stop any weights being changed based on VQ error
 x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
-# Decoder
-# just to show where decoder layer goes, will be trained to be indentity
-x = Dense(2, name='dec_dense')(x)
-
-# Autoencoder.
 vqvae = Model(inputs, x)
 data_variance = np.var(x_train)
 loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
@@ -150,13 +132,6 @@ vqvae.get_layer('vqvae').set_weights([vq])
 print(x_train)
 print(np.transpose(vq))
 
-history = vqvae.fit(x_train, x_train,
-                    batch_size=batch_size, epochs=args.epochs,
-                    callbacks=[print_weights])
+history = vqvae.fit(x_train, x_train, batch_size=batch_size, epochs=args.epochs)
 vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
 print(np.transpose(vq_entries))
-
-#plt.scatter(x_train[:,0],x_train[:,1])
-#plt.scatter(vq_entries[0,:],vq_entries[1,:], marker='x')
-#plt.show()
-
