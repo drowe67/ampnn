@@ -47,7 +47,7 @@ class VQVAELayer(Layer):
                                   shape=(self.embedding_dim, self.num_embeddings),
                                   initializer=self.initializer,
                                   trainable=True)
-        
+
         # Finalize building.
         super(VQVAELayer, self).build(input_shape)
 
@@ -66,13 +66,10 @@ class VQVAELayer(Layer):
         # Retrieve encoding indices.
         encoding_indices = K.argmax(-distances, axis=1)
         encodings = K.one_hot(encoding_indices, self.num_embeddings)
+        encodings = print_tensor("encodings= ", encodings)
         encoding_indices = K.reshape(encoding_indices, K.shape(x)[:-1])
-        encoding_indices = K.print_tensor(encoding_indices, "encoding_indices: ")
+        encoding_indices = print_tensor("encoding_indices= ", encoding_indices)
         quantized = self.quantize(encoding_indices)
-
-        # Metrics.
-        #avg_probs = K.mean(encodings, axis=0)
-        #perplexity = K.exp(- K.sum(avg_probs * K.log(avg_probs + epsilon)))
         
         return quantized
 
@@ -104,13 +101,12 @@ parser = argparse.ArgumentParser(description='VQ training test')
 parser.add_argument('--epochs', type=int, default=1, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=2, help='Number of samples to train on')
 parser.add_argument('--embedding_dim', type=int, default=2,  help='dimension of embedding vectors')
-parser.add_argument('--num_embedding', type=int, default=2,  help='number of embedded vectors')
+parser.add_argument('--num_embedding', type=int, default=4,  help='number of embedded vectors')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples;
 
-x_train = b = np.asarray([[1,1],
-                          [-1,-1]])
+x_train = np.asarray([ [1,1], [-1,-1] ])
     
 # Encoder
 inputs = Input(shape=(dim, ), name='encoder_input')
@@ -125,13 +121,11 @@ loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
 
-# seed VQ entries with perfect vectors
-vq = np.transpose(x_train)
+# set up contrived VQ entries
+vq = np.transpose(np.asarray([ [1,1], [-1,-1], [-1,1], [1,-1] ]))
 vqvae.get_layer('vqvae').set_weights([vq])
 
+history = vqvae.fit(x_train, x_train, batch_size=batch_size, epochs=args.epochs)
 print(x_train)
 print(np.transpose(vq))
 
-history = vqvae.fit(x_train, x_train, batch_size=batch_size, epochs=args.epochs)
-vq_entries = vqvae.get_layer('vqvae').get_weights()[0]
-print(np.transpose(vq_entries))
