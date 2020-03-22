@@ -4,7 +4,7 @@
     VQ-VAE_Keras_MNIST_Example.ipynb
     https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
 
-    $ ./vq__vae_demo_2stage.py --num_embedding 16
+    $ ./vq_vae_demo_2stage.py
 
 """
 
@@ -115,7 +115,7 @@ parser = argparse.ArgumentParser(description='VQ training test')
 parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=10000, help='Number of frames to train on')
 parser.add_argument('--embedding_dim', type=int, default=2,  help='dimension of embedding vectors')
-parser.add_argument('--num_embedding', type=int, default=4,  help='number of embedded vectors')
+parser.add_argument('--num_embedding', type=int, default=16,  help='number of embedded vectors')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples;
@@ -156,5 +156,20 @@ vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
 plt.scatter(x_train[:,0],x_train[:,1])
 plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='+',color='blue')
 plt.scatter(vq2_weights[0,:],vq2_weights[1,:], marker='x',color='red')
-plt.show()
 
+# Count how many times each vector is used
+def vector_count(x, vq, dim, nb_vecs):
+    # VQ search outside of Keras Backend
+    flat_inputs = np.reshape(x, (-1, dim))
+    distances = np.sum(flat_inputs**2, axis=1, keepdims=True) - 2* np.dot(flat_inputs, vq) + np.sum(vq ** 2, axis=0, keepdims=True)
+    encoding_indices = np.argmax(-distances, axis=1)
+    count = np.zeros(nb_vecs, dtype="int")
+    count[encoding_indices] += 1
+    return count
+
+count = np.zeros(args.num_embedding, dtype="int")
+for i in range(0, nb_samples, batch_size):
+    count += vector_count(x_train[i:i+batch_size],vq1_weights, dim, args.num_embedding)    
+print(count)
+
+#plt.show()
