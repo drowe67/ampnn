@@ -189,7 +189,7 @@ y = Conv1D(eband_K, 3, padding='same')(y)
 vqvae = Model(inputs, y)
 data_var = np.var(train)
 loss = vq_vae_loss_wrapper(data_var, commitment_cost, x1, x, x3, stage1_error)
-adam = keras.optimizers.Adam(lr=0.0005)
+adam = keras.optimizers.Adam(lr=0.001)
 vqvae.compile(loss=loss, optimizer=adam)
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_conv1d_2stage.png', show_shapes=True)
@@ -207,6 +207,21 @@ train_est = train_est.reshape(-1, eband_K)
 print(encoder_out.shape)
 encoder_out = encoder_out.reshape(-1, dim)
 print(train.shape, encoder_out.shape)
+
+# Count how many times each vector is used
+def vector_count(x, vq, dim, nb_vecs):
+    # VQ search outside of Keras Backend
+    flat_inputs = np.reshape(x, (-1, dim))
+    distances = np.sum(flat_inputs**2, axis=1, keepdims=True) - 2* np.dot(flat_inputs, vq) + np.sum(vq ** 2, axis=0, keepdims=True)
+    encoding_indices = np.argmax(-distances, axis=1)
+    count = np.zeros(nb_vecs, dtype="int")
+    count[encoding_indices] += 1
+    return count
+
+vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
+count = np.zeros(args.num_embedding, dtype="int")
+for i in range(0, nb_samples, batch_size):
+    count += vector_count(encoder_out[i:i+batch_size], vq1_weights, dim, args.num_embedding)    
 
 # Plot training results
 loss = history.history['loss'] 
@@ -259,6 +274,12 @@ for r in range(nb_plots):
     a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
     t = "f: %d %3.1f" % (f, a_mse)
     plt.title(t)
+plt.show(block=False)
+
+plt.figure(6)
+plt.plot(count,'bo')
+plt.title('Vector Usage Counts for Stage 1')
+print(count)
 plt.show(block=False)
 
 # plot first 2D of spaces
