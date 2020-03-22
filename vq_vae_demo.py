@@ -3,10 +3,9 @@
   From: VQ-VAE_Keras_MNIST_Example.ipynb
   https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
 
-  Simple VQ-VAE Keras example:
+  Simple VQ-VAE Keras demo:
 
-    $ ./vq__vae_demo.py
-
+     $ ./vq_vae_demo.py
 """
 
 # Imports.
