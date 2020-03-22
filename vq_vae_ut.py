@@ -129,3 +129,14 @@ history = vqvae.fit(x_train, x_train, batch_size=batch_size, epochs=args.epochs)
 print(x_train)
 print(np.transpose(vq))
 
+# VQ search outside of Keras Backend
+x = x_train
+flat_inputs = np.reshape(x, (-1, dim))
+distances = np.sum(flat_inputs**2, axis=1, keepdims=True) - 2* np.dot(flat_inputs, vq) + np.sum(vq ** 2, axis=0, keepdims=True)
+encoding_indices = np.argmax(-distances, axis=1)
+print(encoding_indices)
+count = np.zeros(2, dtype="int")
+count[encoding_indices] += 1
+print(count)
+
+        
