@@ -1,3 +1,5 @@
+This started out as Amplitude Sample Rate Conversion as described below, but is currently being used as a repo for my learning about various NN topics such as conv1d, variational autoencoders, and VQ-VAE. 
+
 # Amplitude Sample Rate Conversion Using Neural Nets
 
 Codec 2 models speech as a harmonic series of sine waves, each with it's own frequency, amplitude and phase.  The frequencies are approximated at harmonics of the pitch or fundamental frequency.  A reasonable model of the phases can be recovered from the amplitudes.
