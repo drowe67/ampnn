@@ -89,7 +89,7 @@ class VQVAELayer(Layer):
 
     def quantize(self, encoding_indices):
         w = K.transpose(self.embeddings.read_value())
-        return tf.nn.embedding_lookup(w, encoding_indices, validate_indices=False)
+        return tf.nn.embedding_lookup(w, encoding_indices)
 
 # Calculate vq-vae loss.
 def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
@@ -157,8 +157,8 @@ vqvae = Model(input_img, x)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
 w = vqvae.get_layer('vqvae').get_weights()
-print(w)
-exit()
+#print(w)
+#exit()
 
 history = vqvae.fit(x_train, x_train,
                     batch_size=batch_size, epochs=epochs,

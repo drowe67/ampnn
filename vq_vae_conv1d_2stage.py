@@ -27,6 +27,8 @@ from keras import backend as K
 from keras.utils import plot_model
 from keras.callbacks import LambdaCallback
 import os
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 # less verbose tensorflow ....
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -85,7 +87,7 @@ def vq_vae_loss_wrapper(data_var, commitment_cost, quantized1, x_inputs1, quanti
     def vq_vae_loss(x, x_hat):
         recon_loss = losses.mse(x, x_hat)/data_var
         
-        e_latent_loss = K.mean((K.stop_gradient(quantized1) - x_inputs1) ** 2)
+        e_latent_loss = K.mean((K.stop_gradient(quantized2) - x_inputs1) ** 2)
         q_latent_loss1 = K.mean((quantized1 - K.stop_gradient(x_inputs1)) ** 2)
         q_latent_loss2 = K.mean((quantized2 - K.stop_gradient(x_inputs2)) ** 2)
         loss = q_latent_loss1 + q_latent_loss2 + commitment_cost * e_latent_loss
@@ -102,10 +104,10 @@ def cb():
     plt.figure(5)
     plt.clf()
     vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
-    plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='X', color="red")
+    plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='.', color="red")
     if args.vq_stages == 2:
         vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
-        plt.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='x')
+        plt.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
     plt.xlim([-1.5,1.5]); plt.ylim([-1.5,1.5])
     plt.draw()
     plt.pause(0.0001)
@@ -189,7 +191,7 @@ y = Conv1D(eband_K, 3, padding='same')(y)
 vqvae = Model(inputs, y)
 data_var = np.var(train)
 loss = vq_vae_loss_wrapper(data_var, commitment_cost, x1, x, x3, stage1_error)
-adam = keras.optimizers.Adam(lr=0.001)
+adam = keras.optimizers.Adam(lr=0.0005)
 vqvae.compile(loss=loss, optimizer=adam)
 vqvae.summary()
 plot_model(vqvae, to_file='vq_vae_conv1d_2stage.png', show_shapes=True)
@@ -287,10 +289,10 @@ plt.show(block=False)
 fig,ax = plt.subplots()
 ax.hist2d(encoder_out[:,0],encoder_out[:,1], bins=(50,50))
 vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
-ax.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='X', color="red")
+ax.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='.', color="red")
 if args.vq_stages == 2:
     vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
-    ax.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='x')
+    ax.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
 plt.show(block=False)
 
 plt.waitforbuttonpress(0)

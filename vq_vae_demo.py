@@ -24,6 +24,9 @@ from keras.utils import plot_model
 from keras.callbacks import LambdaCallback
 import os
 
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 # less verbose tensorflow ....
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -74,7 +77,7 @@ class VQVAELayer(Layer):
 
     def quantize(self, encoding_indices):
         w = K.transpose(self.embeddings.read_value())
-        return tf.nn.embedding_lookup(w, encoding_indices, validate_indices=False)
+        return tf.nn.embedding_lookup(w, encoding_indices)
 
 # Calculate vq-vae loss.
 def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
