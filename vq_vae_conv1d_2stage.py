@@ -16,6 +16,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 import argparse
+import getch
 
 import tensorflow as tf
 import keras
@@ -101,7 +102,7 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
                                     baseline=None)
 
 def cb():
-    plt.figure(5)
+    plt.figure(1)
     plt.clf()
     vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
     plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='.', color="red")
@@ -142,11 +143,13 @@ nb_chunks = int(nb_samples/nb_timesteps)
 nb_samples = nb_chunks*nb_timesteps
 print("nb_samples: %d" % (nb_samples))
 features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
+features *= 0.1
 
 # normalise
 train_mean = np.mean(features, axis=0)
 features -= train_mean
 features *= train_scale
+print(np.mean(features, axis=0), np.std(features, axis=0))
 
 # reshape into (batch, timesteps, channels) for conv1D
 train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps, eband_K)
@@ -228,7 +231,7 @@ loss = history.history['loss']
 val_loss = history.history['val_loss']
 num_epochs = range(1, 1 + len(history.history['loss'])) 
 
-plt.figure(1)
+plt.figure(2)
 plt.plot(num_epochs, loss, label='Training loss')
 plt.plot(num_epochs, val_loss, label='Validation loss') 
 
@@ -249,34 +252,14 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
 
 mse,msepf = calc_mse(train/train_scale, train_est/train_scale, nb_samples, nb_features, 1)
 print("mse: %4.2f dB*dB" % (mse))
-plt.figure(2)
+plt.figure(3)
 plt.plot(msepf)
 def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
-plt.figure(3)
+plt.figure(4)
 plt.hist(reject_outliers(msepf), bins='fd')
 
-# plot input/output spectra for a few frames to sanity check
-
-nb_plots = 8
-frames=range(100,100+nb_plots)
-print(frames)
-nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
-plt.figure(4)
-plt.tight_layout()
-plt.title('Rate K Amplitude Spectra')
-for r in range(nb_plots):
-    plt.subplot(nb_plotsy,nb_plotsx,r+1)
-    f = frames[r];
-    plt.plot(10*(train_mean+train[f,:]/train_scale),'g')
-    plt.plot(10*(train_mean+train_est[f,:]/train_scale),'r')
-    plt.ylim(0,80)
-    a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
-    t = "f: %d %3.1f" % (f, a_mse)
-    plt.title(t)
-plt.show(block=False)
-
-plt.figure(6)
+plt.figure(5)
 plt.plot(count,'bo')
 plt.title('Vector Usage Counts for Stage 1')
 print(count)
@@ -304,13 +287,40 @@ encoder_pca=find_pca(encoder_out)
 ax.hist2d(encoder_pca[:,0],encoder_pca[:,1], bins=(50,50))
 vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
 vq1_pca = find_pca(vq1_weights.T)
-ax.scatter(vq1_pca[:,0],vq1_pca[:,1], marker='.', color="red")
+ax.scatter(vq1_pca[:,0],vq1_pca[:,1], marker='.', s=4, color="white")
 
 #if args.vq_stages == 2:
 #    vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
 #    ax.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
 plt.show(block=False)
 
-plt.waitforbuttonpress(0)
+# plot input/output spectra for a few frames to sanity check
+
+nb_plots = 8
+fs = 100;
+key = ' '
+while key != 'q':
+    frames=range(fs,fs+nb_plots)
+    nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
+    plt.figure(7)
+    plt.clf()
+    plt.tight_layout()
+    plt.title('Rate K Amplitude Spectra')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frames[r];
+        plt.plot(10*(train_mean+train[f,:]/train_scale),'g')
+        plt.plot(10*(train_mean+train_est[f,:]/train_scale),'r')
+        plt.ylim(0,80)
+        a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
+        t = "f: %d %3.1f" % (f, a_mse)
+        plt.title(t)
+    plt.draw()
+    plt.pause(0.0001)
+    key = getch.getch()
+    if key == 'n':
+        fs += nb_plots
+    if key == 'b':
+        fs -= nb_plots
 plt.close()
 
