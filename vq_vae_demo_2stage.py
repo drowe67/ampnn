@@ -23,6 +23,8 @@ from keras import backend as K
 from keras.utils import plot_model
 from keras.callbacks import LambdaCallback
 import os
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 # less verbose tensorflow ....
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
