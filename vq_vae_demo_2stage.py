@@ -83,7 +83,7 @@ def vq_vae_loss_wrapper(commitment_cost, quantized1, x_inputs1, quantized2, x_in
     def vq_vae_loss(x, x_hat):
         recon_loss = losses.mse(x, x_hat)
         
-        e_latent_loss = K.mean((K.stop_gradient(quantized1) - x_inputs1) ** 2)
+        e_latent_loss = K.mean((K.stop_gradient(quantized2) - x_inputs1) ** 2)
         q_latent_loss1 = K.mean((quantized1 - K.stop_gradient(x_inputs1)) ** 2)
         q_latent_loss2 = K.mean((quantized2 - K.stop_gradient(x_inputs2)) ** 2)
         loss = q_latent_loss1 + q_latent_loss2 + commitment_cost * e_latent_loss

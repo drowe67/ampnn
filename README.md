@@ -1,11 +1,14 @@
-# Some experiments with Spectral Amplitude Quantisation using NNs
+# Spectral Amplitude Quantisation using NNs
+
+Experiments with time/frequency sample rate conversion and VQ-VAE for quantising the spectrum of speech for vocoders.
 
 ## Themes and Key Points
 
-* I'm using Keras 2.3, Tensowflow 2.0
+* I'm a Neural Net Noob, and still don't quite know what I'm doing!
+* Currently using Keras 2.4.3 and Tensorflow 2.3.1
 * For convenience I use Codec 2 (an old school, non NN vocoder) to "listen" to results from this work, however the cool kids are using VQ VAE with NN vocoders.
 * I'm using regression - the NN estimates the actual log10(Am) values, not discrete PDFs.
-* Making NN works with sparse (variable L) spectral magnitude vectors, using a sparse target and custom loss functions.
+* Making NN work with sparse, variable rate spectral magnitude vectors, using a sparse target and custom loss functions.
 * Using NNs for decimation/interpolation (sub-sampling) in time, to reduce the frame rate and hence bit rate.
 * Extending VQ VAE to two stage vector quantisation.  Multi-stage VQ is commonly used in non-NN speech coding.
 * The simulations (NN training and vector quantisation) works on mean square error in the log(Am) domain, which is equivalence to (i) variance (ii) and proportional to Spectral Distortion (SD) in dB^2 - which is very closely correlated to subjective quality.  It trains in dB.

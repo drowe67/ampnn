@@ -3,13 +3,19 @@
 
   Two stage rate K vector quantisation using a VQ VAE and conv1D:
 
-    ~/codec2/build_linux/src/c2sim ~/Downloads/all_speech_8k.sw --bands all_speech_8k.f32 --modelout all_speech_8k.model --bands_lower 1
-    ./vq_vae_conv1d_2stage.py all_speech_8k.f32 --embedding_dim 16 --epochs 25 --num_embedding 2048
+    1/ LPCNet style K=14 mel spaced energy bands:
+       $ ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --bands dev-clean-8k.f32 --bands_lower 1
+       $ ./vq_vae_conv1d_2stage.py dev-clean-8k.f32 --embedding_dim 16 --epochs 25 --num_embedding 2048
 
-  -> 6.52 dB*dB   
+    2/ Codec 2 newamp1 K=20 mel spaced bands:
+       $ ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --rateK --rateKout dev-clean-8k-K20.f32
+       $ ./vq_vae_conv1d_2stage.py dev-clean-8k-K20.f32 --embedding_dim 16 --epochs 25 --eband_K 20 --gain 0.1 --num_embedding 2048
+       -> 13.87 dB*dB
 
-  [1] VQ-VAE_Keras_MNIST_Example.ipynb
-      https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
+   a) dev-clean-8k is from Librispeech, resampled to 8kHz with sox
+   b) trains pretty fast, about 30 seconds/epoch on a modest GeForce GTX 1060 3GB
+   c) bunch of plots at the end, and a VQ pager to look at some input/output frames
+
 """
 
 # Imports.
@@ -101,6 +107,7 @@ esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4,
                                     patience=5, verbose=0, mode='auto',
                                     baseline=None)
 
+# call back we run during training that plots first two dimensions of VQ entries so we can visualise training
 def cb():
     plt.figure(1)
     plt.clf()
@@ -110,25 +117,30 @@ def cb():
         vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
         plt.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
     plt.xlim([-1.5,1.5]); plt.ylim([-1.5,1.5])
+    plt.title('First two dimensions of first and second stage VQ')
     plt.draw()
     plt.pause(0.0001)
 print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
 
-# Hyper Parameters.
+# Hyper Parameters ----------------------------------------------
+
 batch_size = 64
 validation_split = 0.1
 commitment_cost = 0.25
 train_scale = 0.125
 nb_timesteps = 8
 
+# Command line ----------------------------------------------
+
 parser = argparse.ArgumentParser(description='Two stage VQ-VAE for rate K vectors')
-parser.add_argument('featurefile', help='f32 file of eband vectors')
+parser.add_argument('featurefile', help='f32 file of spectral mag vectors, each element is log10(energy), i.e. dB/10')
 parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs')
 parser.add_argument('--eband_K', type=int, default=14, help='Length of eband vector')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--embedding_dim', type=int, default=2,  help='dimension of embedding vectors')
 parser.add_argument('--num_embedding', type=int, default=128,  help='number of embedded vectors')
 parser.add_argument('--vq_stages', type=int, default=2,  help='number of vq_stages')
+parser.add_argument('--gain', type=float, default=1.0,  help='apply this gain to features when read in')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples
@@ -143,7 +155,7 @@ nb_chunks = int(nb_samples/nb_timesteps)
 nb_samples = nb_chunks*nb_timesteps
 print("nb_samples: %d" % (nb_samples))
 features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
-features *= 0.1
+features *= args.gain
 
 # normalise
 train_mean = np.mean(features, axis=0)
@@ -151,14 +163,15 @@ features -= train_mean
 features *= train_scale
 print(np.mean(features, axis=0), np.std(features, axis=0))
 
-# reshape into (batch, timesteps, channels) for conv1D
+# reshape into (batch, timesteps, channels) for conv1D.  We
+# concatentate the training material with same sequence of frames at a
+# bunch of different time shifts
 train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps, eband_K)
 for i in range(1,nb_timesteps):
-    print(i,-nb_timesteps+i)
     features1 = features[i:nb_samples-nb_timesteps+i,:].reshape(nb_chunks-1, nb_timesteps, eband_K)
     train =  np.concatenate((train,features1))
   
-# Model -------------------------------------
+# Model ------------------------------------------------------------
 
 # Encoder
 input_shape = (nb_timesteps, nb_features)
@@ -181,6 +194,7 @@ x4 = Lambda(lambda x3: stage1_error + K.stop_gradient(x3 - stage1_error))(x3)
 
 x5 = Add()([x2,x4])
 
+# Decoder
 if args.vq_stages == 1:
     y = Conv1D(16, 3, activation='tanh', padding='same')(x2)
 else:
@@ -201,6 +215,8 @@ history = vqvae.fit(train, train,
                     batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,
                     callbacks=[print_weights])
+
+# Analyse output -----------------------------------------------------------------------
 
 # back to original shape
 train_est = vqvae.predict(train, batch_size=batch_size)
@@ -257,7 +273,9 @@ plt.plot(msepf)
 def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
 plt.figure(4)
+plt.title('Histogram of Spectral Distortion dB*dB out to 2*sigma')
 plt.hist(reject_outliers(msepf), bins='fd')
+plt.savefig('vqvae_sd_histogram.png')
 
 plt.figure(5)
 plt.plot(count,'bo')
@@ -293,11 +311,17 @@ ax.scatter(vq1_pca[:,0],vq1_pca[:,1], marker='.', s=4, color="white")
 #    vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
 #    ax.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
 plt.show(block=False)
+plt.savefig('vqvae_pca.png')
 
-# plot input/output spectra for a few frames to sanity check
+plt.pause(0.0001)
+print("Press any key to continue to VQ pager....")
+key = getch.getch()
+plt.close('all')
+
+# VQ Pager - plot input/output spectra to sanity check
 
 nb_plots = 8
-fs = 100;
+fs = 110;
 key = ' '
 while key != 'q':
     frames=range(fs,fs+nb_plots)
@@ -315,12 +339,16 @@ while key != 'q':
         a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
         t = "f: %d %3.1f" % (f, a_mse)
         plt.title(t)
-    plt.draw()
+    plt.show(block=False)
     plt.pause(0.0001)
+    print("n-next b-back s-save_png q-quit", end='', flush=True);
     key = getch.getch()
     if key == 'n':
         fs += nb_plots
     if key == 'b':
         fs -= nb_plots
+    if key == 's':
+        plt.savefig('vqvae_spectra.png')
+
 plt.close()
 
