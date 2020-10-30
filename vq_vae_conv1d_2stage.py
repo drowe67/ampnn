@@ -163,7 +163,6 @@ inputs = Input(shape=input_shape, name='encoder_input')
 x = Conv1D(32, 3, activation='tanh', padding='same')(inputs)
 x = MaxPooling1D(pool_size=2, padding='same')(x)
 x = Conv1D(16, 3, activation='tanh', padding='same')(x)
-#x = MaxPooling1D(pool_size=2, padding='same')(x)
 
 encoder = Model(inputs, x)
 encoder.summary()
@@ -179,7 +178,6 @@ x4 = Lambda(lambda x3: stage1_error + K.stop_gradient(x3 - stage1_error))(x3)
 
 x5 = Add()([x2,x4])
 
-#y = UpSampling1D(size=2)(x5)
 if args.vq_stages == 1:
     y = Conv1D(16, 3, activation='tanh', padding='same')(x2)
 else:
@@ -284,15 +282,33 @@ plt.title('Vector Usage Counts for Stage 1')
 print(count)
 plt.show(block=False)
 
-# plot first 2D of spaces
+# use PCA to plot encoder space and VQ in 2D -----------------------------------------
+
+# https://towardsdatascience.com/principal-component-analysis-pca-from-scratch-in-python-7f3e2a540c51
+def find_pca(A):
+    # calculate the mean of each column
+    M = np.mean(A.T, axis=1)
+    # center columns by subtracting column means
+    C = A - M
+    # calculate covariance matrix of centered matrix
+    V = np.cov(C.T)
+    # eigendecomposition of covariance matrix
+    values, vectors = np.linalg.eig(V)
+    #print(vectors)
+    print(values)
+    P = vectors.T.dot(C.T)
+    return P.T
 
 fig,ax = plt.subplots()
-ax.hist2d(encoder_out[:,0],encoder_out[:,1], bins=(50,50))
+encoder_pca=find_pca(encoder_out)
+ax.hist2d(encoder_pca[:,0],encoder_pca[:,1], bins=(50,50))
 vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
-ax.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='.', color="red")
-if args.vq_stages == 2:
-    vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
-    ax.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
+vq1_pca = find_pca(vq1_weights.T)
+ax.scatter(vq1_pca[:,0],vq1_pca[:,1], marker='.', color="red")
+
+#if args.vq_stages == 2:
+#    vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
+#    ax.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
 plt.show(block=False)
 
 plt.waitforbuttonpress(0)
