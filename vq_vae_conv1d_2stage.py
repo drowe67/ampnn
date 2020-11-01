@@ -113,9 +113,8 @@ def cb():
     plt.clf()
     vq1_weights = vqvae.get_layer('vq1').get_weights()[0]
     plt.scatter(vq1_weights[0,:],vq1_weights[1,:], marker='.', color="red")
-    if args.vq_stages == 2:
-        vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
-        plt.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
+    vq2_weights = vqvae.get_layer('vq2').get_weights()[0]
+    plt.scatter(1+vq2_weights[0,:],1+vq2_weights[1,:], marker='.')
     plt.xlim([-1.5,1.5]); plt.ylim([-1.5,1.5])
     plt.title('First two dimensions of first and second stage VQ')
     plt.draw()
@@ -139,8 +138,8 @@ parser.add_argument('--eband_K', type=int, default=14, help='Length of eband vec
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--embedding_dim', type=int, default=2,  help='dimension of embedding vectors')
 parser.add_argument('--num_embedding', type=int, default=128,  help='number of embedded vectors')
-parser.add_argument('--vq_stages', type=int, default=2,  help='number of vq_stages')
 parser.add_argument('--gain', type=float, default=1.0,  help='apply this gain to features when read in')
+parser.add_argument('--nnout', type=str, default="vqvae_nn.h5", help='Name of output NN we have trained')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples
@@ -176,7 +175,7 @@ for i in range(1,nb_timesteps):
 # Encoder
 input_shape = (nb_timesteps, nb_features)
 inputs = Input(shape=input_shape, name='encoder_input')
-x = Conv1D(32, 3, activation='tanh', padding='same')(inputs)
+x = Conv1D(32, 3, activation='tanh', padding='same', name="conv1d_a")(inputs)
 x = MaxPooling1D(pool_size=2, padding='same')(x)
 x = Conv1D(16, 3, activation='tanh', padding='same')(x)
 
@@ -195,10 +194,7 @@ x4 = Lambda(lambda x3: stage1_error + K.stop_gradient(x3 - stage1_error))(x3)
 x5 = Add()([x2,x4])
 
 # Decoder
-if args.vq_stages == 1:
-    y = Conv1D(16, 3, activation='tanh', padding='same')(x2)
-else:
-    y = Conv1D(16, 3, activation='tanh', padding='same')(x5)    
+y = Conv1D(16, 3, activation='tanh', padding='same')(x5)    
 y = UpSampling1D(size=2)(y)
 y = Conv1D(32, 3, activation='tanh', padding='same')(y)
 y = Conv1D(eband_K, 3, padding='same')(y)
@@ -242,7 +238,8 @@ count = np.zeros(args.num_embedding, dtype="int")
 for i in range(0, nb_samples, batch_size):
     count += vector_count(encoder_out[i:i+batch_size], vq1_weights, dim, args.num_embedding)    
 
-# Plot training results
+# Plot training results -------------------------
+
 loss = history.history['loss'] 
 val_loss = history.history['val_loss']
 num_epochs = range(1, 1 + len(history.history['loss'])) 
@@ -313,6 +310,21 @@ ax.scatter(vq1_pca[:,0],vq1_pca[:,1], marker='.', s=4, color="white")
 plt.show(block=False)
 plt.savefig('vqvae_pca.png')
 
+# Lets visualise some of the first layer conv1D weights ---------------------
+
+conv1d_a_weights = vqvae.get_layer('conv1d_a').get_weights()[0]
+plt.figure(7)
+plt.tight_layout()
+plt.title('First layer conv1D weights')
+nb_filters = conv1d_a_weights.shape[2]
+print(conv1d_a_weights.shape, nb_filters)
+for i in range(16):
+    plt.subplot(4, 4, i+1)
+    plt.imshow(conv1d_a_weights[:, :, i], cmap='gray')
+    plt.axis('off')
+plt.show(block=False)
+plt.savefig('vqva_conv1d_a.png')
+
 plt.pause(0.0001)
 print("Press any key to continue to VQ pager....")
 key = getch.getch()
@@ -326,7 +338,7 @@ key = ' '
 while key != 'q':
     frames=range(fs,fs+nb_plots)
     nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
-    plt.figure(7)
+    plt.figure(8)
     plt.clf()
     plt.tight_layout()
     plt.title('Rate K Amplitude Spectra')

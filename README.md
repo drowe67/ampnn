@@ -3,14 +3,12 @@
 Experiments with time/frequency sample rate conversion and VQ-VAE (Vector Quantised Variational Autoencoder) for quantising the speech spectrum for vocoders.
 
 This plot shows a VQ-VAE in action:
-
 ![PCA of VQVAE encoder space](doc/vqvae_pca.png)
-
 The plot is a 2D histogram of the encoder space, white dots are the stage 1 VQ entries.  The 16 dimensional data has been reduced to 2 dimensions using PCA.  The plot was produced by `vq_vae_conv1d_2stage.py`
 
 ## Themes and Key Points
 
-* I'm a Neural Net Noob, and still don't quite know what I'm doing!
+* I'm a Neural Net Noob.  As a way of learning I am trying out some NN ideas to solve problems I have faced before in specch coding.
 * Currently using Keras 2.4.3 and Tensorflow 2.3.1
 * For convenience I use Codec 2 (an old school, non NN vocoder) to "listen" to results from this work, however the cool kids are using VQ VAE with NN vocoders.
 * I'm using regression - the NN estimates the actual log10(Am) values, not discrete PDFs.
@@ -36,12 +34,13 @@ The plot is a 2D histogram of the encoder space, white dots are the stage 1 VQ e
 
 ## Amplitude Sample Rate Conversion Using Neural Nets
 
+Some of the scripts in this repo (`eband_*.py`, `newamp1_train.py`) explore the use of Neural Networks (NN) in resampling between rate K and rate L for Codec 2.
+
 Codec 2 models speech as a harmonic series of sine waves, each with it's own frequency, amplitude and phase.  The frequencies are approximated at harmonics of the pitch or fundamental frequency.  A reasonable model of the phases can be recovered from the amplitudes.
 
 Accurate representation of the sine wave amplitudes {Am} m=1...L is important for good quality speech.  The number of amplitudes in each frame L is dependent on the pitch L=P/2, which is time varying between (typically between L=10 and L=80).  However for transmission at a fixed bit rate, a fixed number of parameters is desirable.
 
 In earlier Codec 2 modes such as 3200 down to 1200, the amplitudes were represented using a fixed number of Linear Prediction Coefficients.  In more recent modes such as 700C, the amplitudes Am are resampled to a fixed sample rate (K=20), and vector quantised for transmission.  At the decoder, the rate K amplitude samples are resampled back to rate L for synthesis.  The K=20 vectors use mel spaced sampling so these vectors are similar to the mel-spaced MFCCs used by the NN community.
 
-Some of the scripts in this repo explores the use of Neural Networks (NN) in resampling between rate K and rate L.  
 
 
