@@ -1,6 +1,12 @@
 # Spectral Amplitude Quantisation using NNs
 
-Experiments with time/frequency sample rate conversion and VQ-VAE for quantising the spectrum of speech for vocoders.
+Experiments with time/frequency sample rate conversion and VQ-VAE (Vector Quantised Variational Autoencoder) for quantising the speech spectrum for vocoders.
+
+This plot shows a VQ-VAE in action:
+
+![PCA of VQVAE encoder space](doc/vqvae_pca.png)
+
+The plot is a 2D histogram of the encoder space, white dots are the stage 1 VQ entries.  The 16 dimensional data has been reduced to 2 dimensions using PCA.  The plot was produced by `vq_vae_conv1d_2stage.py`
 
 ## Themes and Key Points
 
@@ -26,7 +32,7 @@ Experiments with time/frequency sample rate conversion and VQ-VAE for quantising
 | vq_vae_demo.py | Simple demo of VQ, nice visualisation of training in action | Cool demo | 
 | vq_vae_demo_2stage.py | vq_vae_demo.py extended to two stage VQ | Cool demo | 
 | vq_vae_ratek.py | Single stage VQ-VAE with single Dense layer | No |
-| vq_vae_ratek_conv1d.py | Two stage VQ-VAE with two conv1D layers | Yes, reasonable spectral distortion, cool plots |
+| vq_vae_conv1d_2stage.py | Two stage VQ-VAE with two conv1D layers | Yes, reasonable spectral distortion, cool plots |
 
 ## Amplitude Sample Rate Conversion Using Neural Nets
 

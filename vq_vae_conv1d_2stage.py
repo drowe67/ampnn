@@ -341,7 +341,7 @@ while key != 'q':
         plt.title(t)
     plt.show(block=False)
     plt.pause(0.0001)
-    print("n-next b-back s-save_png q-quit", end='', flush=True);
+    print("n-next b-back s-save_png q-quit", end='\r', flush=True);
     key = getch.getch()
     if key == 'n':
         fs += nb_plots
