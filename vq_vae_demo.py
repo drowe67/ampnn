@@ -12,26 +12,18 @@
 import numpy as np
 from matplotlib import pyplot as plt
 import argparse
-
-import tensorflow as tf
-import keras
-
-from keras.models import Model
-from keras.layers import Input, Layer, Dense, Lambda
-from keras import losses
-from keras import backend as K
-from keras.utils import plot_model
-from keras.callbacks import LambdaCallback
 import os
 
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+import tensorflow as tf
+from tensorflow.keras.layers import Input, Dense, Lambda
+from tensorflow.keras import Model
+tf.compat.v1.disable_eager_execution()
 
 # less verbose tensorflow ....
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # VQ layer.
-class VQVAELayer(Layer):
+class VQVAELayer(tf.keras.layers.Layer):
     def __init__(self, embedding_dim, num_embeddings, commitment_cost,
                  initializer='uniform', epsilon=1e-10, **kwargs):
         self.embedding_dim = embedding_dim
@@ -52,23 +44,19 @@ class VQVAELayer(Layer):
 
     def call(self, x):
         # Flatten input except for last dimension.
-        flat_inputs = K.reshape(x, (-1, self.embedding_dim))
+        flat_inputs = tf.reshape(x, (-1, self.embedding_dim))
         
         # Calculate distances of input to embedding vectors.
-        distances = (K.sum(flat_inputs**2, axis=1, keepdims=True)
-                     - 2 * K.dot(flat_inputs, self.w)
-                     + K.sum(self.w ** 2, axis=0, keepdims=True))
+        distances = (tf.math.reduce_sum(flat_inputs**2, axis=1, keepdims=True)
+                     - 2 * tf.tensordot(flat_inputs, self.w, 1)
+                     + tf.math.reduce_sum(self.w ** 2, axis=0, keepdims=True))
 
         # Retrieve encoding indices.
-        encoding_indices = K.argmax(-distances, axis=1)
-        encodings = K.one_hot(encoding_indices, self.num_embeddings)
-        encoding_indices = K.reshape(encoding_indices, K.shape(x)[:-1])
+        encoding_indices = tf.argmax(-distances, axis=1)
+        encodings = tf.one_hot(encoding_indices, self.num_embeddings)
+        encoding_indices = tf.reshape(encoding_indices, tf.shape(x)[:-1])
         quantized = self.quantize(encoding_indices)
 
-        # Metrics.
-        #avg_probs = K.mean(encodings, axis=0)
-        #perplexity = K.exp(- K.sum(avg_probs * K.log(avg_probs + epsilon)))
-        
         return quantized
 
     @property
@@ -76,23 +64,24 @@ class VQVAELayer(Layer):
         return self.w
 
     def quantize(self, encoding_indices):
-        w = K.transpose(self.embeddings.read_value())
+        w = tf.transpose(self.embeddings.read_value())
         return tf.nn.embedding_lookup(w, encoding_indices)
 
 # Calculate vq-vae loss.
 def vq_vae_loss_wrapper(data_variance, commitment_cost, quantized, x_inputs):
     def vq_vae_loss(x, x_hat):
-        recon_loss = losses.mse(x, x_hat) / data_variance
+        recon_loss = tf.losses.mse(x, x_hat) / data_variance
         
-        e_latent_loss = K.mean((K.stop_gradient(quantized) - x_inputs) ** 2)
-        q_latent_loss = K.mean((quantized - K.stop_gradient(x_inputs)) ** 2)
+        e_latent_loss = tf.math.reduce_mean((tf.stop_gradient(quantized) - x_inputs) ** 2)
+        q_latent_loss = tf.math.reduce_mean((quantized - tf.stop_gradient(x_inputs)) ** 2)
         loss = q_latent_loss + commitment_cost * e_latent_loss
         
         return recon_loss + loss #* beta
     return vq_vae_loss
 
+
 # EarlyStoppingCallback.
-esc = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-3,
+esc = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-3,
                                     patience=5, verbose=0, mode='auto',
                                     baseline=None)
 
@@ -104,7 +93,8 @@ def cb():
     plt.xlim([-3,3]); plt.ylim([-3,3])
     plt.draw()
     plt.pause(0.0001)
-print_weights = LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
+print_weights = tf.keras.callbacks.LambdaCallback(on_epoch_end=lambda batch, logs: cb() )
+
 
 # Hyper Parameters.
 batch_size = 64
@@ -135,11 +125,11 @@ if args.test == "gaussian":
 input_shape = (dim, )
 inputs = Input(shape=input_shape, name='encoder_input')
 # dummy encoder layer, this would normally be dense/conv
-enc = Lambda(lambda inputs: inputs)(inputs)
+enc = Lambda(lambda inputs: inputs, name="lambda1")(inputs)
 enc_inputs = enc
 enc = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vqvae")(enc)
 # transparent layer (input = output), but stop any weights being changed based on VQ error
-x = Lambda(lambda enc: enc_inputs + K.stop_gradient(enc - enc_inputs), name="encoded")(enc)
+x = Lambda(lambda enc: enc_inputs + tf.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
 # Decoder
 # just to show where decoder layer goes, will be trained to be indentity
@@ -151,7 +141,7 @@ data_variance = np.var(x_train)
 loss = vq_vae_loss_wrapper(data_variance, commitment_cost, enc, enc_inputs)
 vqvae.compile(loss=loss, optimizer='adam')
 vqvae.summary()
-plot_model(vqvae, to_file='vq_vae_demo.png', show_shapes=True)
+tf.keras.utils.plot_model(vqvae, to_file='vq_vae_demo.png', show_shapes=True)
 
 if args.test == "qpsk":
     # seed VQ entries otherwise random start leads to converging on poor VQ extries
