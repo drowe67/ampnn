@@ -1,5 +1,14 @@
 import tensorflow as tf
 
+'''
+TODO
+  [ ] get VQ around the right way
+  [ ] rename
+  [ ] stand alone decoder
+  [ ] integrate back into demo, will it operate outside of eager mode?
+  [ ] try with two stage/speech data
+'''
+
 # VQ layer.
 class VQVAELayer(tf.keras.layers.Layer):
     def __init__(self, embedding_dim, num_embeddings, commitment_cost,
@@ -48,9 +57,8 @@ class VQVAELayer(tf.keras.layers.Layer):
         return self.w
 
     def quantize(self, encoding_indices):
-        w = tf.transpose(self.embeddings.read_value())
-        print(w)
-        return tf.nn.embedding_lookup(w, encoding_indices)
+        encoding_onehot = tf.one_hot(encoding_indices, self.num_embeddings)
+        return = tf.matmul(encoding_onehot,tf.transpose(self.w))
 
 print(tf.test.is_gpu_available())
 vq = VQVAELayer(embedding_dim=2,num_embeddings=4,commitment_cost=0.25)
