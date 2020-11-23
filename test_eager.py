@@ -12,6 +12,8 @@ class MyDenseLayer(tf.keras.layers.Layer):
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
         self.vq = tf.Variable(tf.constant([[1.,1.],[-1.,1.],[-1.,-1.],[1.,-1.]]),trainable=False)
+        self.commitment_cost = 0.25
+        self.gamma = 0.99
 
     def build(self, input_shape):
         super(MyDenseLayer, self).build(input_shape)
