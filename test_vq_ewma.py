@@ -11,6 +11,7 @@ TODO
   [X] rename w->vq
   [X] shut TF up
   [X] stand alone decoder
+  [X] initialise method
   [ ] integrate back into demo, will it operate outside of eager mode?
   [ ] try with two stage/speech data
 '''
@@ -24,16 +25,14 @@ class VQVAELayer(tf.keras.layers.Layer):
         self.commitment_cost = commitment_cost
         self.initializer = initializer
         self.gamma = 0.99
-        super(VQVAELayer, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # Add embedding weights.
-        self.vq = tf.Variable(initial_value=tf.constant([[1.,1.],[-1.,1.],[-1.,-1.],[1.,-1.]]),
-                               trainable=False)
+        self.vq = tf.Variable(tf.zeros(shape=(self.num_embeddings,self.embedding_dim),dtype=float),trainable=False)
 
         # running sums/EWMA filter states
         self.Centroid_sum = self.vq
         self.Centroid_n = tf.Variable(initial_value=tf.ones([self.num_embeddings]), trainable=False)
+        super(VQVAELayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
         # Finalize building.
         super(VQVAELayer, self).build(input_shape)
 
@@ -55,12 +54,15 @@ class VQVAELayer(tf.keras.layers.Layer):
         centroid_n = tf.reduce_sum(encoding_onehot,axis=0)
         self.Centroid_sum = self.Centroid_sum*self.gamma + centroid_sum*(1-self.gamma)
         self.Centroid_n = self.Centroid_n*self.gamma + centroid_n*(1-self.gamma)
-        #print(self.Centroid_sum, self.Centroid_n, tf.reshape(self.Centroid_n, (-1, 1)))
         self.vq = self.Centroid_sum/tf.reshape(self.Centroid_n, (-1, 1))
         
         return quantized
 
-    def embeddings(self):
+    def set_vq(self, vq):
+        self.vq = vq
+        self.Centroid_sum = vq
+        
+    def get_vq(self):
         return self.vq
 
     def quantize(self, encoding_indices):
@@ -69,8 +71,11 @@ class VQVAELayer(tf.keras.layers.Layer):
 
 print(tf.test.is_gpu_available())
 vqvae = VQVAELayer(embedding_dim=2,num_embeddings=4,commitment_cost=0.25)
+vqvae.set_vq(tf.constant([[1.,1.],[-1.,1.],[-1.,-1.],[1.,-1.]]))
 
 a=tf.constant([[1.,1.],[-1.,1],[1.,1]])
-vqvae(a)
-print(vqvae.quantize([0]))
-#print(vqvae.embeddings)
+print(vqvae(a))
+#print(vqvae.quantize([0]))
+vq=vqvae.get_vq()
+print(vq)
+   
