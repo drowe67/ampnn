@@ -132,7 +132,7 @@ enc = VQVAELayer(dim, args.num_embedding, commitment_cost, name="vqvae")(enc)
 x = Lambda(lambda enc: enc_inputs + tf.stop_gradient(enc - enc_inputs), name="encoded")(enc)
 
 # Decoder
-# just to show where decoder layer goes, will be trained to be indentity
+# just to show where decoder layer goes, will be trained to be identity
 x = Dense(2, name='dec_dense')(x)
 
 # Autoencoder.
