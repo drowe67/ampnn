@@ -1,3 +1,16 @@
+'''
+
+  Custom Vector Quantiser layer written in tf.keras.  It uses kmeans
+  to train, with updates performed on each batch using moving
+  averages.
+
+  Refs:
+  [1] VQ-VAE_Keras_MNIST_Example.ipynb
+      https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
+  [2] "Neural Discrete Representation Learning", Aaron van den Oord etc al, 2018
+
+'''
+
 import tensorflow as tf
 
 # Custom Layer - Vector Quantiser with Exponential Weighted Moving Average kmeans updates

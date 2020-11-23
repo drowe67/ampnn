@@ -1,14 +1,8 @@
 #!/usr/bin/python3
 '''
-  Demo of a custom Vector Quantiser layer written in tf.keras.  It
-  uses kmeans to train, with updates performed on each batch using
-  moving averages.
+  Demo of custom Vector Quantiser layer written in tf.keras:
 
-  Refs:
-  [1] VQ-VAE_Keras_MNIST_Example.ipynb
-      https://colab.research.google.com/github/HenningBuhl/VQ-VAE_Keras_Implementation/blob/master/VQ_VAE_Keras_MNIST_Example.ipynb
-  [2] "Neural Discrete Representation Learning", Aaron van den Oord etc al, 2018
-
+  $ ./vq_ewma_kmeans_demo.py
 '''
 
 import logging
@@ -16,7 +10,7 @@ import os
 import numpy as np
 from matplotlib import pyplot as plt
 
-# Give TF "a bit of shoosh" - nneds to be placed _before_ "import tensorflow as tf"
+# Give TF "a bit of shoosh" - needs to be placed _before_ "import tensorflow as tf"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
 logging.getLogger('tensorflow').setLevel(logging.FATAL)
 
