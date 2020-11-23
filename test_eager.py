@@ -14,7 +14,7 @@ class MyDenseLayer(tf.keras.layers.Layer):
         self.vq = tf.Variable(tf.constant([[1.,1.],[-1.,1.],[-1.,-1.],[1.,-1.]]),trainable=False)
         self.commitment_cost = 0.25
         self.gamma = 0.99
-        self.Centroid_sum = self.vq
+        self.Centroid_sum = tf.Variable(tf.constant([[1.,1.],[-1.,1.],[-1.,-1.],[1.,-1.]]),trainable=False)
         self.Centroid_n = tf.Variable(initial_value=tf.ones([self.num_embeddings]), trainable=False)
 
     def build(self, input_shape):
@@ -38,9 +38,19 @@ class MyDenseLayer(tf.keras.layers.Layer):
         
         centroid_sum =  tf.matmul(tf.transpose(encoding_onehot),x)
         centroid_n = tf.reduce_sum(encoding_onehot,axis=0)
-        tf.keras.backend.update(self.Centroid_sum, self.Centroid_sum*self.gamma + centroid_sum*(1-self.gamma))
-        tf.keras.backend.update(self.Centroid_n, self.Centroid_n*self.gamma + centroid_n*(1-self.gamma))
-        tf.keras.backend.update(self.vq, self.Centroid_sum/tf.reshape(self.Centroid_n, (-1, 1)))
+        Centroid_sum = self.Centroid_sum*self.gamma + centroid_sum*(1.-self.gamma)
+        Centroid_n = self.Centroid_n*self.gamma + centroid_n*(1.-self.gamma)
+        vq = Centroid_sum/tf.reshape(Centroid_n, (-1, 1))
+        
+        #tf.keras.backend.update(self.Centroid_sum, self.Centroid_sum*self.gamma + centroid_sum*(1.-self.gamma))
+        #tf.keras.backend.update(self.Centroid_sum, self.Centroid_sum*self.gamma)
+        #tf.keras.backend.update(self.Centroid_n, self.Centroid_n*self.gamma + centroid_n*(1.-self.gamma))
+        #tf.keras.backend.update(self.vq, self.Centroid_sum/tf.reshape(self.Centroid_n, (-1, 1)))
+        
+        tf.keras.backend.update(self.Centroid_sum, Centroid_sum)
+        tf.keras.backend.update(self.Centroid_n, Centroid_n)
+        tf.keras.backend.update(self.vq, vq)
+        tf.print(Centroid_sum, Centroid_n, self.vq)
         
         return quantized
 
@@ -53,5 +63,5 @@ model.summary()
 
 x_train=np.ones((1000,2),dtype=float);
 
-model.fit(x_train, x_train, batch_size=1, epochs=2)
+model.fit(x_train, x_train, batch_size=2, epochs=1)
 
