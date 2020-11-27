@@ -157,10 +157,13 @@ features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 features *= args.gain
 
 # normalise
-train_mean = np.mean(features, axis=0)
-features -= train_mean
+train_mean = np.mean(features, axis=1)
+print(features.shape,train_mean.shape)
+for i in range(nb_samples):
+    features[i,:] -= train_mean[i]
 features *= train_scale
-print(np.mean(features, axis=0), np.std(features, axis=0))
+
+#print(np.mean(features, axis=0), np.std(features, axis=0))
 
 # reshape into (batch, timesteps, channels) for conv1D.  We
 # concatentate the training material with same sequence of frames at a
@@ -345,8 +348,8 @@ while key != 'q':
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frames[r];
-        plt.plot(10*(train_mean+train[f,:]/train_scale),'g')
-        plt.plot(10*(train_mean+train_est[f,:]/train_scale),'r')
+        plt.plot(10*(train_mean[f]+train[f,:]/train_scale),'g')
+        plt.plot(10*(train_mean[f]+train_est[f,:]/train_scale),'r')
         plt.ylim(0,80)
         a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
         t = "f: %d %3.1f" % (f, a_mse)
