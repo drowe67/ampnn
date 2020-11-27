@@ -2,7 +2,7 @@
 
   Custom Vector Quantiser layer written in tf.keras.  It uses kmeans
   to train, with updates performed on each batch using moving
-  averages.
+  averages.  Used to build VQ VAEs
 
   Refs:
   [1] VQ-VAE_Keras_MNIST_Example.ipynb
@@ -64,3 +64,23 @@ class VQ_kmeans(tf.keras.layers.Layer):
         
     def get_vq(self):
         return self.vq
+
+# Section 3.2 of [2]: custom layer to copy gradient from decoder input z_q(x) to encoder output z_e(x)
+# transparent layer (input = output), but stop any enc weights being changed based on VQ error,
+# gradient feedback path for enc gradients over top of VQ
+class CopyGradient(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        pass
+
+    def call(self, inputs):
+        z_q, z_e = inputs
+        return z_e + tf.stop_gradient(z_q - z_e)
+
+# Make sure the encoding space z_e doesn't become very much larger
+# than the VQ space z_q, 3rd term of (3) in [2]
+def commitment_loss(z_e, z_q):
+    commitment_cost = 0.25
+    e_latent_loss = tf.math.reduce_mean((tf.stop_gradient(z_q) - z_e) ** 2)
+    return commitment_cost * e_latent_loss
+
