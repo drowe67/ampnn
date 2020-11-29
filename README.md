@@ -27,7 +27,10 @@ The plot is a 2D histogram of the encoder space, white dots are the stage 1 VQ e
 | eband_out.py | Generates Codec 2 output from NN trained in eband_train/ebanddec_train | No |
 | newamp1_train.py | Similar to eband_train.py, constant rate K to timing varying rate L, using Codec 2 newamp1 K=20 vectors | No |
 | vq_pager.py | Step through output rate K vectors | Yes |
-| vq_vae_demo.py | Simple demo of VQ, nice visualisation of training in action | Cool demo | 
+| vq_vae_demo.py | Simple demo of VQVAE, nice visualisation of training in action | Cool demo | 
+| vq_kmeans.py | kmeans VQ training in TensorFlow | Yes | 
+| vq_kmeans_demo.py | Simple demo of kmeans VQ training in TF | Yes | 
+| vq_vae_kmeans_demo.py | Simple demo of kmeans VQVAE in TF | Yes | 
 | vq_vae_demo_2stage.py | vq_vae_demo.py extended to two stage VQ | Cool demo | 
 | vq_vae_ratek.py | Single stage VQ-VAE with single Dense layer | No |
 | vq_vae_conv1d_2stage.py | Two stage VQ-VAE with two conv1D layers | Yes, reasonable spectral distortion, cool plots |
