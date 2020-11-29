@@ -29,29 +29,38 @@ x_train = 2*bits-1 + 0.1*np.random.randn(nb_samples, dim)
 # VQ VAE model --------------------------------------------
 
 x = tf.keras.layers.Input(shape=(dim,))
-# dummy layer would be an NN layer in practice
-z_e = tf.keras.layers.Lambda(lambda x: x)(x)
-#z_e = tf.keras.layers.Dense(dim, name="enc_dense")(x)
+# if a dummy layer is used for enc, decoder layer will train to identity
+#z_e = tf.keras.layers.Lambda(lambda x: x)(x)
+# toy encoder layer
+z_e = tf.keras.layers.Dense(dim, name="enc_dense")(x)
 z_q = VQ_kmeans(dim, nb_embedding, name="vq")(z_e)
 z_q_ = CopyGradient()([z_q, z_e])
 # toy decoder layer
 p = tf.keras.layers.Dense(dim, name='dec_dense')(z_q_)
 
-model = tf.keras.Model(x, p)
+vqvae = tf.keras.Model(x, p)
 
-model.add_loss(commitment_loss(z_e, z_q))
-model.compile(loss='mse', optimizer='adam')
-model.summary()
+vqvae.add_loss(commitment_loss(z_e, z_q))
+vqvae.compile(loss='mse', optimizer='adam')
+vqvae.summary()
 
-# Set up initial VQ table to something we know should converge
-vq_initial = np.array([[1.,1.],[-1.,1.],[-1.,-1.],[1.,-1.]])/10
-model.get_layer('vq').set_vq(vq_initial)
-print(model.get_layer('vq').get_vq())
+vqvae.fit(x_train, x_train, batch_size=2, epochs=10)
+x_pred = vqvae.predict(x_train);
 
-model.fit(x_train, x_train, batch_size=2, epochs=10)
-vq_entries = model.get_layer('vq').get_vq()
-print(model.get_layer('dec_dense').get_weights())
+# Compare the VQ-ed outputs to inputs
 plt.scatter(x_train[:,0],x_train[:,1])
-plt.scatter(vq_entries[:,0],vq_entries[:,1], marker='x')
+plt.scatter(x_pred[:,0],x_pred[:,1])
+plt.title('VQVAE input and output')
+plt.show(block=False)
+
+# Lets look at how the VQ entries map to the encoder space
+enc = tf.keras.Model(x, z_e)
+z_e_pred = enc.predict(x_train);
+vq_entries = vqvae.get_layer('vq').get_vq()
+print(vqvae.get_layer('dec_dense').get_weights(), vq_entries)
+plt.figure(2)
+plt.scatter(z_e_pred[:,0],z_e_pred[:,1])
+plt.scatter(vq_entries[:,0],vq_entries[:,1])
+plt.title('Encoder space and VQ entries')
 plt.show()
 
