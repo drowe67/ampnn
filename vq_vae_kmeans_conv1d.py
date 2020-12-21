@@ -8,7 +8,7 @@
 '''
 
 import logging
-import os, argparse
+import os, argparse, getch
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -68,6 +68,16 @@ for i in range(1,nb_timesteps):
     features1 = features[i:nb_samples-nb_timesteps+i,:].reshape(nb_chunks-1, nb_timesteps, eband_K)
     train =  np.concatenate((train,features1))
 
+class CustomCallback(tf.keras.callbacks.Callback):
+   def on_epoch_begin(self, epoch, logs=None):
+       plt.figure(1)
+       plt.clf()
+       vq_weights = vqvae.get_layer('vq').get_vq()
+       plt.scatter(vq_weights[:,0],vq_weights[:,1], marker='.', color="red")
+       plt.xlim([-1.5,1.5]); plt.ylim([-1.5,1.5])
+       plt.draw()
+       plt.pause(0.0001)      
+   
 # Model --------------------------------------------
 
 x = tf.keras.layers.Input(shape=(nb_timesteps, nb_features), name='encoder_input')
@@ -81,7 +91,7 @@ encoder = tf.keras.Model(x, z_e)
 encoder.summary()
 
 # VQ
-z_q = VQ_kmeans(16, args.num_embedding, name="vq")(z_e)
+z_q = VQ_kmeans(dim, args.num_embedding, name="vq")(z_e)
 z_q_ = CopyGradient()([z_q, z_e])
 
 # Decoder
@@ -94,11 +104,18 @@ vqvae = tf.keras.Model(x, p)
 vqvae.summary()
 
 vqvae.add_loss(commitment_loss(z_e, z_q))
-vqvae.compile(loss='mse', optimizer='adam')
+adam = tf.keras.optimizers.Adam(lr=0.0005)
+vqvae.compile(loss='mse', optimizer=adam)
+
+# seed VQ
+vq_initial = np.random.rand(args.num_embedding,dim)*0.1 - 0.05
+vqvae.get_layer('vq').set_vq(vq_initial)
 
 history = vqvae.fit(train, train, batch_size=batch_size, epochs=args.epochs,
-                    validation_split=validation_split)
+                    validation_split=validation_split,callbacks=[CustomCallback()])
 
+vq_weights = vqvae.get_layer('vq').get_vq().numpy()
+           
 # Analyse output -----------------------------------------------------------------------
 
 # back to original shape
@@ -143,4 +160,55 @@ def reject_outliers(data, m=2):
 plt.figure(4)
 plt.title('Histogram of Spectral Distortion dB*dB out to 2*sigma')
 plt.hist(reject_outliers(msepf), bins='fd')
-plt.show()
+plt.show(block=False)
+
+
+# Count how many times each vector is used
+def vector_count(x, vq, dim, nb_vecs):
+    # VQ search outside of Keras Backend
+    flat_inputs = np.reshape(x, (-1, dim))
+    distances = np.sum(flat_inputs**2, axis=1, keepdims=True) - 2* np.dot(flat_inputs, vq.T) + np.sum(vq.T ** 2, axis=0, keepdims=True)
+    encoding_indices = np.argmax(-distances, axis=1)
+    count = np.zeros(nb_vecs, dtype="int")
+    count[encoding_indices] += 1
+    return count
+
+count = np.zeros(args.num_embedding, dtype="int")
+for i in range(0, nb_samples, batch_size):
+    count += vector_count(encoder_out[i:i+batch_size], vq_weights, dim, args.num_embedding)    
+
+
+plt.figure(5)
+plt.plot(count,'bo')
+plt.title('Vector Usage Counts for Stage 1')
+print(count)
+plt.show(block=False)
+
+# use PCA to plot encoder space and VQ in 2D -----------------------------------------
+
+# https://towardsdatascience.com/principal-component-analysis-pca-from-scratch-in-python-7f3e2a540c51
+def find_pca(A):
+    # calculate the mean of each column
+    M = np.mean(A.T, axis=1)
+    # center columns by subtracting column means
+    C = A - M
+    # calculate covariance matrix of centered matrix
+    V = np.cov(C.T)
+    # eigendecomposition of covariance matrix
+    values, vectors = np.linalg.eig(V)
+    #print(vectors)
+    #print(values)
+    P = vectors.T.dot(C.T)
+    return P.T
+
+fig,ax = plt.subplots()
+encoder_pca=find_pca(encoder_out)
+ax.hist2d(encoder_pca[:,0],encoder_pca[:,1], bins=(50,50))
+vq_pca = find_pca(vq_weights)
+ax.scatter(vq_pca[:,0],vq_pca[:,1], marker='.', s=4, color="white")
+plt.show(block=False)
+
+plt.pause(0.0001)
+print("Press any key to end....")
+key = getch.getch()
+plt.close('all')
