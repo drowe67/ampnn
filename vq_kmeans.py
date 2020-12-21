@@ -20,11 +20,11 @@ class VQ_kmeans(tf.keras.layers.Layer):
         self.num_embeddings = num_embeddings        # number of VQ entries
         self.vq = tf.Variable(tf.zeros(shape=(self.num_embeddings, self.embedding_dim)),trainable=False)
         self.gamma = 0.99
-
+        
         # moving averages used for kmeans update of VQ on each batch
         self.ewma_centroid_sum = tf.Variable(self.vq,trainable=False)
         self.ewma_centroid_n = tf.Variable(initial_value=tf.ones([self.num_embeddings]), trainable=False)
-
+        
         super(VQ_kmeans, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -42,10 +42,11 @@ class VQ_kmeans(tf.keras.layers.Layer):
         encoding_indices = tf.argmax(-distances, axis=1)
         encoding_onehot = tf.one_hot(encoding_indices, self.num_embeddings)
         quantized = tf.matmul(encoding_onehot,self.vq)
-        
+        quantized = tf.reshape(quantized, tf.shape(x))
+       
         # Update moving averages and hence update VQ
         
-        centroid_sum =  tf.matmul(tf.transpose(encoding_onehot),x)
+        centroid_sum =  tf.matmul(tf.transpose(encoding_onehot),flat_inputs)
         centroid_n = tf.reduce_sum(encoding_onehot,axis=0)
         ewma_centroid_sum = self.ewma_centroid_sum*self.gamma + centroid_sum*(1.-self.gamma)
         ewma_centroid_n = self.ewma_centroid_n*self.gamma + centroid_n*(1.-self.gamma)
