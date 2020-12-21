@@ -12,17 +12,17 @@
          ./eband_out.py ampnn.h5 sample.f32 sample.model --modelout sample_out.model
 '''
 
+import logging
+import os, argparse, sys
 import numpy as np
-import sys
-import matplotlib.pyplot as plt
-from scipy import signal
+from matplotlib import pyplot as plt
+
+# Give TF "a bit of shoosh" - needs to be placed _before_ "import tensorflow as tf"
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
+logging.getLogger('tensorflow').setLevel(logging.FATAL)
+
+import tensorflow as tf
 import codec2_model
-import argparse
-import os
-from keras.layers import Input, Dense, Concatenate
-from keras import models,layers
-from keras import initializers
-from keras import backend as K
 
 # less verbose tensorflow ....
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -93,11 +93,11 @@ if args.dec != 1:
  
         
 # our model
-model = models.Sequential()
-model.add(layers.Dense(2*eband_K, activation='relu', input_dim=eband_K))
-model.add(layers.Dense(2*eband_K, activation='relu'))
-model.add(layers.Dense(width, activation='relu'))
-model.add(layers.Dense(width))
+model = tf.keras.models.Sequential()
+model.add(tf.keras.layers.Dense(2*eband_K, activation='relu', input_dim=eband_K))
+model.add(tf.keras.layers.Dense(2*eband_K, activation='relu'))
+model.add(tf.keras.layers.Dense(width, activation='relu'))
+model.add(tf.keras.layers.Dense(width))
 model.summary()
 model.load_weights(args.ampnn)
 

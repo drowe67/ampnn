@@ -12,20 +12,21 @@
          ./eband_train.py all_speech_8k.f32 all_speech_8k.model --epochs 10
 '''
 
+import logging
+import os, argparse, sys
 import numpy as np
-import sys
-import matplotlib.pyplot as plt
-from scipy import signal
+from matplotlib import pyplot as plt
+
+# Give TF "a bit of shoosh" - needs to be placed _before_ "import tensorflow as tf"
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
+logging.getLogger('tensorflow').setLevel(logging.FATAL)
+
+import tensorflow as tf
 import codec2_model
-import argparse
-import os
-from keras.layers import Input, Dense, Concatenate
-from keras import models,layers
-from keras import initializers
-from keras import backend as K
 
 # less verbose tensorflow ....
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import tensorflow as tf
 
 # constants
 
@@ -87,16 +88,16 @@ for i in range(nb_samples):
         amp_sparse[i,bin] = np.log10(A[i,m])
 
 # our model
-model = models.Sequential()
+model = tf.keras.models.Sequential()
 cand=1
 if cand == 1:
-    model.add(layers.Dense(2*eband_K, activation='relu', input_dim=eband_K))
-    model.add(layers.Dense(2*eband_K, activation='relu'))
-    model.add(layers.Dense(width, activation='relu'))
-    model.add(layers.Dense(width))
+    model.add(tf.keras.layers.Dense(2*eband_K, activation='relu', input_dim=eband_K))
+    model.add(tf.keras.layers.Dense(2*eband_K, activation='relu'))
+    model.add(tf.keras.layers.Dense(width, activation='relu'))
+    model.add(tf.keras.layers.Dense(width))
 else:
     # simple linear model as a control
-    model.add(layers.Dense(width,  input_dim=eband_K))
+    model.add(tf.keras.layers.Dense(width,  input_dim=eband_K))
     
 model.summary()
 
@@ -105,10 +106,11 @@ model.summary()
 # samples to 0 we use a sparse loss function.  The normalisation term
 # accounts for the time varying number of non-zero samples per frame.
 def sparse_loss(y_true, y_pred):
-    mask = K.cast( K.not_equal(y_true, 0), dtype='float32')
-    n = K.sum(mask)
-    return K.sum(K.square((y_pred - y_true)*mask))/n
+    mask = tf.cast( tf.math.not_equal(y_true, 0), dtype='float32')
+    n = tf.reduce_sum(mask)
+    return tf.reduce_sum(tf.math.square((y_pred - y_true)*mask))/n
 
+'''
 # testing custom loss function
 y_true = Input(shape=(None,))
 y_pred = Input(shape=(None,))
@@ -116,6 +118,7 @@ loss_func = K.Function([y_true, y_pred], [sparse_loss(y_true, y_pred)])
 assert loss_func([[[0,1,0]], [[2,2,2]]]) == np.array([1])
 assert loss_func([[[1,1,0]], [[3,2,2]]]) == np.array([2.5])
 assert loss_func([[[0,1,0]], [[0,2,0]]]) == np.array([1])
+'''
 
 # fit the model
 from keras import optimizers
