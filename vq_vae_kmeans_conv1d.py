@@ -1,10 +1,14 @@
 #!/usr/bin/python3
 '''
-  rate K vector quantisation using VQ-VAE, kmeans, and conv1
+  rate K vector quantisation using two stage VQ-VAE, kmeans, and conv1
 
-  $ ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --bands dev-clean-8k.f32 --bands_lower 1
-  $ ./vq_vae_kmeans_conv1d.py dev-clean-8k.f32 
+  1/ Using LPCNet style mel spaced energy bands:
+       $ ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --bands dev-clean-8k.f32
+       $ ./vq_vae_kmeans_conv1d.py dev-clean-8k.f32 --epochs 5 --scale 0.005
 
+  2/ Codec 2 newamp1 K=20 mel spaced bands:
+       $ ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --rateK --rateKout dev-clean-8k-K20.f32
+       $ ./vq_vae_kmeans_conv1d.py dev-clean-8k-K20.f32 --epochs 5 --eband_K 20 --scale 0.005
 '''
 
 import logging
@@ -67,41 +71,48 @@ for i in range(1,nb_timesteps+2):
     features1 = features[i:nb_samples-nb_timesteps-2+i,:].reshape(nb_chunks-1, nb_timesteps+2, eband_K)
     train =  np.concatenate((train,features1))
 print(train.shape)
+nb_chunks = train.shape[0];
+ 
+# Optional removal of chunks with mean beneath threshold
+j = 0;
+for i in range(nb_chunks):
+    amean = np.mean(train[i])
+    if amean > args.mean_thresh:
+        train[j] = train[i]
+        j += 1
+nb_chunks = j        
+train = train[:nb_chunks];
+print(nb_chunks, train.shape)
 
-# Optional mean removal of each chunk, and toss out chunks with mean beneath threshold
+# Optional mean removal of each chunk
 if args.mean:
-    nb_chunks = train.shape[0];
     train_mean = np.zeros(nb_chunks)
-    j = 0;
     for i in range(nb_chunks):
         train_mean[i] = np.mean(train[i])
-        if train_mean[i] > args.mean_thresh:
-            train[j] = train[i] - train_mean[i]
-            j += 1
-    nb_chunks = j        
-    train = train[:nb_chunks];
-    print(train.shape)
+        train[i] -= train_mean[i]
 else:
     # remove global mean
-    mean = np.mean(features, axis=0);
-    features -= mean
+    mean = np.mean(features)
+    train -= mean
     print("mean", mean)
-    train_mean = mean*np.ones((nb_samples,eband_K))
+    train_mean = mean*np.ones(nb_chunks)
  
+# scale magnitude of training data to get std dev around 1 ish (adjusted by experiment)
+train *= train_scale
+print("std",np.std(train))
+
 # The target we wish the network to generate is the "inner" nb_timesteps samples
 train_target=train[:,1:nb_timesteps+1,:]
 print(train_target.shape)
-
-# scale magnitude of training data to get std dev around 1 ish (adjusted by experiment)
-train *= train_scale
-print("std",np.std(features, axis=0))
 
 class CustomCallback(tf.keras.callbacks.Callback):
    def on_epoch_begin(self, epoch, logs=None):
        plt.figure(1)
        plt.clf()
-       vq_weights = vqvae.get_layer('vq').get_vq()
-       plt.scatter(vq_weights[:,0],vq_weights[:,1], marker='.', color="red")
+       vq1_weights = vqvae.get_layer('vq1').get_vq()
+       vq2_weights = vqvae.get_layer('vq2').get_vq()
+       plt.scatter(vq1_weights[:,0],vq1_weights[:,1], marker='.', color="red")
+       plt.scatter(1+vq2_weights[:,0],1+vq2_weights[:,1], marker='.')
        plt.xlim([-1.5,1.5]); plt.ylim([-1.5,1.5])
        plt.draw()
        plt.pause(0.0001)      
@@ -119,7 +130,10 @@ encoder = tf.keras.Model(x, z_e)
 encoder.summary()
 
 # VQ
-z_q = VQ_kmeans(dim, args.num_embedding, name="vq")(z_e)
+z_q1 = VQ_kmeans(dim, args.num_embedding, name="vq1")(z_e)
+z_q1_error = tf.keras.layers.Subtract()([z_e,z_q1])
+z_q2 = VQ_kmeans(dim, args.num_embedding, name="vq2")(z_q1_error)
+z_q = tf.keras.layers.Add()([z_q1,z_q2])
 z_q_ = CopyGradient()([z_q, z_e])
 
 # Decoder
@@ -132,17 +146,18 @@ vqvae = tf.keras.Model(x, p)
 vqvae.summary()
 
 vqvae.add_loss(commitment_loss(z_e, z_q))
-adam = tf.keras.optimizers.Adam(lr=0.0005)
+adam = tf.keras.optimizers.Adam(lr=0.001)
 vqvae.compile(loss='mse', optimizer=adam)
 
-# seed VQ - adjusted to avoid Nans when training due to unused VQ entries
+# seed VQs
 vq_initial = np.random.rand(args.num_embedding,dim)*0.1 - 0.05
-vqvae.get_layer('vq').set_vq(vq_initial)
+vqvae.get_layer('vq1').set_vq(vq_initial)
+vqvae.get_layer('vq2').set_vq(vq_initial)
 
 history = vqvae.fit(train, train_target, batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,callbacks=[CustomCallback()])
 
-vq_weights = vqvae.get_layer('vq').get_vq().numpy()
+vq_weights = vqvae.get_layer('vq1').get_vq().numpy()
            
 # Analyse output -----------------------------------------------------------------------
 
@@ -158,6 +173,7 @@ for i in range(nb_chunks):
 train_target = train_target.reshape(-1, eband_K)
 train_est = train_est.reshape(-1, eband_K)
 encoder_out = encoder_out.reshape(-1, dim)
+nb_samples = train_target.shape[0]
 
 # Plot training results -------------------------
 
@@ -186,16 +202,18 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
 print("mse",train_target.shape, train_est.shape)
 mse,msepf = calc_mse(train_target, train_est, nb_samples, nb_features, 1)
 print("mse: %4.2f dB*dB" % (mse))
+
 plt.figure(3)
 plt.plot(msepf)
 plt.title('Spectral Distortion dB*dB per frame')
+plt.show(block=False)
+
 def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
 plt.figure(4)
 plt.title('Histogram of Spectral Distortion dB*dB out to 2*sigma')
 plt.hist(reject_outliers(msepf), bins='fd')
 plt.show(block=False)
-
 
 # Count how many times each vector is used
 def vector_count(x, vq, dim, nb_vecs):
@@ -220,6 +238,7 @@ plt.show(block=False)
 plt.figure(6)
 plt.hist(train_mean, bins='fd')
 plt.show(block=False)
+plt.title('Mean of each chunk')
 
 # use PCA to plot encoder space and VQ in 2D -----------------------------------------
 
