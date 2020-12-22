@@ -107,7 +107,7 @@ vqvae.add_loss(commitment_loss(z_e, z_q))
 adam = tf.keras.optimizers.Adam(lr=0.0005)
 vqvae.compile(loss='mse', optimizer=adam)
 
-# seed VQ
+# seed VQ - adjusted to avoid Nans when training due to unused VQ entries
 vq_initial = np.random.rand(args.num_embedding,dim)*0.1 - 0.05
 vqvae.get_layer('vq').set_vq(vq_initial)
 
@@ -155,6 +155,7 @@ mse,msepf = calc_mse(train/train_scale, train_est/train_scale, nb_samples, nb_fe
 print("mse: %4.2f dB*dB" % (mse))
 plt.figure(3)
 plt.plot(msepf)
+plt.title('Spectral Distortion dB*dB per frame')
 def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
 plt.figure(4)
@@ -212,3 +213,38 @@ plt.pause(0.0001)
 print("Press any key to end....")
 key = getch.getch()
 plt.close('all')
+
+# VQ Pager - plot input/output spectra to sanity check
+
+nb_plots = 8
+fs = 110;
+key = ' '
+while key != 'q':
+    frames=range(fs,fs+nb_plots)
+    nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
+    plt.figure(8)
+    plt.clf()
+    plt.tight_layout()
+    plt.title('Rate K Amplitude Spectra')
+    for r in range(nb_plots):
+        plt.subplot(nb_plotsy,nb_plotsx,r+1)
+        f = frames[r];
+        plt.plot(10*(train_mean[f]+train[f,:]/train_scale),'g')
+        plt.plot(10*(train_mean[f]+train_est[f,:]/train_scale),'r')
+        plt.ylim(0,80)
+        a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
+        t = "f: %d %3.1f" % (f, a_mse)
+        plt.title(t)
+    plt.show(block=False)
+    plt.pause(0.0001)
+    print("n-next b-back s-save_png q-quit", end='\r', flush=True);
+    key = getch.getch()
+    if key == 'n':
+        fs += nb_plots
+    if key == 'b':
+        fs -= nb_plots
+    if key == 's':
+        plt.savefig('vqvae_spectra.png')
+
+plt.close()
+

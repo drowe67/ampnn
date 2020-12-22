@@ -50,6 +50,8 @@ class VQ_kmeans(tf.keras.layers.Layer):
         centroid_n = tf.reduce_sum(encoding_onehot,axis=0)
         ewma_centroid_sum = self.ewma_centroid_sum*self.gamma + centroid_sum*(1.-self.gamma)
         ewma_centroid_n = self.ewma_centroid_n*self.gamma + centroid_n*(1.-self.gamma)
+        # set a floor on the numerator to avoid Nans when we have unused VQ entries
+        ewma_centroid_n = tf.math.maximum(ewma_centroid_n, 1E-6*tf.ones([self.num_embeddings]))
         vq = ewma_centroid_sum/tf.reshape(ewma_centroid_n, (-1, 1))
 
         # this magic needed to store the updated states and avoid the dreaded eager execution explosion
