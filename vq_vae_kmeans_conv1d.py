@@ -21,7 +21,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
 logging.getLogger('tensorflow').setLevel(logging.FATAL)
 
 import tensorflow as tf
-from vq_kmeans import *
+from vqvae_twostage import *
 
 # Constants -------------------------------------------------
 
@@ -39,7 +39,7 @@ parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of f
 parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of embedding vectors')
 parser.add_argument('--num_embedding', type=int, default=2048,  help='number of embedded vectors')
 parser.add_argument('--scale', type=float, default=0.125,  help='apply this gain to features when read in')
-parser.add_argument('--nnout', type=str, default="vqvae_nn.h5", help='Name of output NN we have trained')
+parser.add_argument('--nnout', type=str, default="", help='Name of output NN we have trained')
 parser.add_argument('--mean', action='store_true', help='Extract mean from each chunk')
 parser.add_argument('--mean_thresh', type=float, default=0,  help='Discard chunks with less than this mean threshold')
 args = parser.parse_args()
@@ -119,33 +119,9 @@ class CustomCallback(tf.keras.callbacks.Callback):
    
 # Model --------------------------------------------
 
-x = tf.keras.layers.Input(shape=(nb_timesteps+2, nb_features), name='encoder_input')
-
-# Encoder
-z_e = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='valid', name="conv1d_a")(x)
-z_e = tf.keras.layers.MaxPooling1D(pool_size=2, padding='same')(z_e)
-z_e = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same')(z_e)
-
-encoder = tf.keras.Model(x, z_e)
-encoder.summary()
-
-# VQ
-z_q1 = VQ_kmeans(dim, args.num_embedding, name="vq1")(z_e)
-z_q1_error = tf.keras.layers.Subtract()([z_e,z_q1])
-z_q2 = VQ_kmeans(dim, args.num_embedding, name="vq2")(z_q1_error)
-z_q = tf.keras.layers.Add()([z_q1,z_q2])
-z_q_ = CopyGradient()([z_q, z_e])
-
-# Decoder
-p = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same')(z_q_)    
-p = tf.keras.layers.UpSampling1D(size=2)(p)
-p = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='same')(p)
-p = tf.keras.layers.Conv1D(eband_K, 3, padding='same')(p)
-
-vqvae = tf.keras.Model(x, p)
+vqvae, encoder = vqvae_models(nb_timesteps, nb_features, dim, args.num_embedding)
 vqvae.summary()
 
-vqvae.add_loss(commitment_loss(z_e, z_q))
 adam = tf.keras.optimizers.Adam(lr=0.001)
 vqvae.compile(loss='mse', optimizer=adam)
 
@@ -158,7 +134,7 @@ history = vqvae.fit(train, train_target, batch_size=batch_size, epochs=args.epoc
                     validation_split=validation_split,callbacks=[CustomCallback()])
 
 vq_weights = vqvae.get_layer('vq1').get_vq().numpy()
-           
+          
 # Analyse output -----------------------------------------------------------------------
 
 train_est = vqvae.predict(train, batch_size=batch_size)
