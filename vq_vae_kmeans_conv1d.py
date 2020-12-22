@@ -23,7 +23,7 @@ from vq_kmeans import *
 
 batch_size = 64
 validation_split = 0.1
-nb_timesteps = 8
+nb_timesteps = 4
 
 # Command line ----------------------------------------------
 
@@ -48,8 +48,8 @@ train_scale = args.scale
 
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
 nb_samples = int(len(features)/eband_K)
-nb_chunks = int(nb_samples/nb_timesteps)
-nb_samples = nb_chunks*nb_timesteps
+nb_chunks = int(nb_samples/(nb_timesteps+2))
+nb_samples = nb_chunks*(nb_timesteps+2)
 print("nb_samples: %d" % (nb_samples))
 features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 
@@ -74,10 +74,14 @@ print("std",np.std(features, axis=0))
 # reshape into (batch, timesteps, channels) for conv1D.  We
 # concatentate the training material with same sequence of frames at a
 # bunch of different time shifts
-train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps, eband_K)
-for i in range(1,nb_timesteps):
-    features1 = features[i:nb_samples-nb_timesteps+i,:].reshape(nb_chunks-1, nb_timesteps, eband_K)
+train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps+2, eband_K)
+print(train.shape)
+for i in range(1,nb_timesteps+2):
+    features1 = features[i:nb_samples-nb_timesteps-2+i,:].reshape(nb_chunks-1, nb_timesteps+2, eband_K)
     train =  np.concatenate((train,features1))
+print(train.shape)
+train_target=train[:,1:nb_timesteps+1,:]
+print(train_target.shape)
 
 class CustomCallback(tf.keras.callbacks.Callback):
    def on_epoch_begin(self, epoch, logs=None):
@@ -91,12 +95,12 @@ class CustomCallback(tf.keras.callbacks.Callback):
    
 # Model --------------------------------------------
 
-x = tf.keras.layers.Input(shape=(nb_timesteps, nb_features), name='encoder_input')
+x = tf.keras.layers.Input(shape=(nb_timesteps+2, nb_features), name='encoder_input')
 
 # Encoder
-z_e = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='same', name="conv1d_a")(x)
+z_e = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='valid', name="conv1d_a")(x)
 z_e = tf.keras.layers.MaxPooling1D(pool_size=2, padding='same')(z_e)
-z_e = tf.keras.layers.Conv1D(16, 3, activation='tanh', padding='same')(z_e)
+z_e = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same')(z_e)
 
 encoder = tf.keras.Model(x, z_e)
 encoder.summary()
@@ -106,7 +110,7 @@ z_q = VQ_kmeans(dim, args.num_embedding, name="vq")(z_e)
 z_q_ = CopyGradient()([z_q, z_e])
 
 # Decoder
-p = tf.keras.layers.Conv1D(16, 3, activation='tanh', padding='same')(z_q_)    
+p = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same')(z_q_)    
 p = tf.keras.layers.UpSampling1D(size=2)(p)
 p = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='same')(p)
 p = tf.keras.layers.Conv1D(eband_K, 3, padding='same')(p)
@@ -122,7 +126,7 @@ vqvae.compile(loss='mse', optimizer=adam)
 vq_initial = np.random.rand(args.num_embedding,dim)*0.1 - 0.05
 vqvae.get_layer('vq').set_vq(vq_initial)
 
-history = vqvae.fit(train, train, batch_size=batch_size, epochs=args.epochs,
+history = vqvae.fit(train, train_target, batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,callbacks=[CustomCallback()])
 
 vq_weights = vqvae.get_layer('vq').get_vq().numpy()
@@ -132,6 +136,7 @@ vq_weights = vqvae.get_layer('vq').get_vq().numpy()
 # back to original shape
 train_est = vqvae.predict(train, batch_size=batch_size)
 encoder_out = encoder.predict(train, batch_size=batch_size)
+train_target =  train_target.reshape(-1, eband_K)
 train = train.reshape(-1, eband_K)
 train_est = train_est.reshape(-1, eband_K)
 print(encoder_out.shape)
@@ -162,7 +167,8 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
     mse = e1/n
     return mse, msepf
 
-mse,msepf = calc_mse(train/train_scale, train_est/train_scale, nb_samples, nb_features, 1)
+print("mse",train_target.shape, train_est.shape)
+mse,msepf = calc_mse(train_target/train_scale, train_est/train_scale, nb_samples, nb_features, 1)
 print("mse: %4.2f dB*dB" % (mse))
 plt.figure(3)
 plt.plot(msepf)
@@ -240,10 +246,10 @@ while key != 'q':
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frames[r];
-        plt.plot((train_mean[f]+train[f,:]/train_scale),'g')
+        plt.plot((train_mean[f]+train_target[f,:]/train_scale),'g')
         plt.plot((train_mean[f]+train_est[f,:]/train_scale),'r')
         plt.ylim(0,80)
-        a_mse = np.mean((train[f,:]/train_scale-train_est[f,:]/train_scale)**2)
+        a_mse = np.mean((train_target[f,:]/train_scale-train_est[f,:]/train_scale)**2)
         t = "f: %d %3.1f" % (f, a_mse)
         plt.title(t)
     plt.show(block=False)
