@@ -19,11 +19,10 @@ logging.getLogger('tensorflow').setLevel(logging.FATAL)
 import tensorflow as tf
 from vq_kmeans import *
 
-# Xonstants -------------------------------------------------
+# Constants -------------------------------------------------
 
 batch_size = 64
 validation_split = 0.1
-train_scale = 0.125
 nb_timesteps = 8
 
 # Command line ----------------------------------------------
@@ -35,13 +34,15 @@ parser.add_argument('--eband_K', type=int, default=14, help='Length of eband vec
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of embedding vectors')
 parser.add_argument('--num_embedding', type=int, default=2048,  help='number of embedded vectors')
-parser.add_argument('--gain', type=float, default=1.0,  help='apply this gain to features when read in')
+parser.add_argument('--scale', type=float, default=0.125,  help='apply this gain to features when read in')
 parser.add_argument('--nnout', type=str, default="vqvae_nn.h5", help='Name of output NN we have trained')
+parser.add_argument('--mean', action='store_true', help='remove mean of each vector')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples
 eband_K = args.eband_K
 nb_features = eband_K
+train_scale = args.scale
 
 # read in rate K vectors ---------------------------------------------------------
 
@@ -51,14 +52,24 @@ nb_chunks = int(nb_samples/nb_timesteps)
 nb_samples = nb_chunks*nb_timesteps
 print("nb_samples: %d" % (nb_samples))
 features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
-features *= args.gain
 
 # normalise
-train_mean = np.mean(features, axis=1)
-print(features.shape,train_mean.shape)
-for i in range(nb_samples):
-    features[i,:] -= train_mean[i]
+if args.mean:
+    # remove mean of every vector
+    train_mean = np.mean(features, axis=1)
+    print("mean", features.shape,train_mean.shape)
+    for i in range(nb_samples):
+        features[i,:] -= train_mean[i]
+else:
+    # remove global mean
+    mean = np.mean(features, axis=0);
+    features -= mean
+    print("mean", mean)
+    train_mean = mean*np.ones((nb_samples,eband_K))
+
 features *= train_scale
+
+print("std",np.std(features, axis=0))
 
 # reshape into (batch, timesteps, channels) for conv1D.  We
 # concatentate the training material with same sequence of frames at a
@@ -145,7 +156,7 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
     msepf = np.zeros(nb_samples-dec)
     e1 = 0; n = 0
     for i in range(nb_samples-dec):
-        e = (10*train_est[i,:] - 10*train[i,:])**2
+        e = (train_est[i,:] - train[i,:])**2
         msepf[i] = np.mean(e)
         e1 += np.sum(e); n += nb_features
     mse = e1/n
@@ -210,7 +221,7 @@ ax.scatter(vq_pca[:,0],vq_pca[:,1], marker='.', s=4, color="white")
 plt.show(block=False)
 
 plt.pause(0.0001)
-print("Press any key to end....")
+print("Press any key to start VQ pager....")
 key = getch.getch()
 plt.close('all')
 
@@ -229,10 +240,10 @@ while key != 'q':
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frames[r];
-        plt.plot(10*(train_mean[f]+train[f,:]/train_scale),'g')
-        plt.plot(10*(train_mean[f]+train_est[f,:]/train_scale),'r')
+        plt.plot((train_mean[f]+train[f,:]/train_scale),'g')
+        plt.plot((train_mean[f]+train_est[f,:]/train_scale),'r')
         plt.ylim(0,80)
-        a_mse = np.mean((10*train[f,:]/train_scale-10*train_est[f,:]/train_scale)**2)
+        a_mse = np.mean((train[f,:]/train_scale-train_est[f,:]/train_scale)**2)
         t = "f: %d %3.1f" % (f, a_mse)
         plt.title(t)
     plt.show(block=False)
