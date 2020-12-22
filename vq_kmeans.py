@@ -18,7 +18,7 @@ class VQ_kmeans(tf.keras.layers.Layer):
     def __init__(self, embedding_dim, num_embeddings, **kwargs):
         self.embedding_dim = embedding_dim          # dimension of each vector
         self.num_embeddings = num_embeddings        # number of VQ entries
-        self.vq = tf.Variable(tf.zeros(shape=(self.num_embeddings, self.embedding_dim)),trainable=False)
+        self.vq = tf.Variable(tf.zeros(shape=(self.num_embeddings, self.embedding_dim)), trainable=False)
         self.gamma = 0.99
         
         # moving averages used for kmeans update of VQ on each batch
@@ -30,7 +30,7 @@ class VQ_kmeans(tf.keras.layers.Layer):
     def build(self, input_shape):
         super(VQ_kmeans, self).build(input_shape)
 
-    def call(self, x):
+    def call(self, x, training):
         # Flatten input except for last dimension
         flat_inputs = tf.reshape(x, (-1, self.embedding_dim))
         
@@ -44,20 +44,21 @@ class VQ_kmeans(tf.keras.layers.Layer):
         quantized = tf.matmul(encoding_onehot,self.vq)
         quantized = tf.reshape(quantized, tf.shape(x))
        
-        # Update moving averages and hence update VQ
+        if training:
+            # Update moving averages and hence update VQ
         
-        centroid_sum =  tf.matmul(tf.transpose(encoding_onehot),flat_inputs)
-        centroid_n = tf.reduce_sum(encoding_onehot,axis=0)
-        ewma_centroid_sum = self.ewma_centroid_sum*self.gamma + centroid_sum*(1.-self.gamma)
-        ewma_centroid_n = self.ewma_centroid_n*self.gamma + centroid_n*(1.-self.gamma)
-        # set a floor on the numerator to avoid Nans when we have unused VQ entries
-        ewma_centroid_n = tf.math.maximum(ewma_centroid_n, 1E-6*tf.ones([self.num_embeddings]))
-        vq = ewma_centroid_sum/tf.reshape(ewma_centroid_n, (-1, 1))
-
-        # this magic needed to store the updated states and avoid the dreaded eager execution explosion
-        tf.keras.backend.update(self.ewma_centroid_sum, ewma_centroid_sum)
-        tf.keras.backend.update(self.ewma_centroid_n, ewma_centroid_n)
-        tf.keras.backend.update(self.vq, vq)
+            centroid_sum =  tf.matmul(tf.transpose(encoding_onehot),flat_inputs)
+            centroid_n = tf.reduce_sum(encoding_onehot,axis=0)
+            ewma_centroid_sum = self.ewma_centroid_sum*self.gamma + centroid_sum*(1.-self.gamma)
+            ewma_centroid_n = self.ewma_centroid_n*self.gamma + centroid_n*(1.-self.gamma)
+            # set a floor on the numerator to avoid Nans when we have unused VQ entries
+            ewma_centroid_n = tf.math.maximum(ewma_centroid_n, 1E-6*tf.ones([self.num_embeddings]))
+            vq = ewma_centroid_sum/tf.reshape(ewma_centroid_n, (-1, 1))
+ 
+            # this magic needed to store the updated states and avoid the dreaded eager execution explosion
+            tf.keras.backend.update(self.ewma_centroid_sum, ewma_centroid_sum)
+            tf.keras.backend.update(self.ewma_centroid_n, ewma_centroid_n)
+            tf.keras.backend.update(self.vq, vq)
         
         return quantized
 
