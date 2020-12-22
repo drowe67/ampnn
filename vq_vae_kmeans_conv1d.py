@@ -36,7 +36,8 @@ parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of
 parser.add_argument('--num_embedding', type=int, default=2048,  help='number of embedded vectors')
 parser.add_argument('--scale', type=float, default=0.125,  help='apply this gain to features when read in')
 parser.add_argument('--nnout', type=str, default="vqvae_nn.h5", help='Name of output NN we have trained')
-parser.add_argument('--mean', action='store_true', help='remove mean of each vector')
+parser.add_argument('--mean', action='store_true', help='Extract mean from each chunk')
+parser.add_argument('--mean_thresh', type=float, default=0,  help='Discard chunks with less than this mean threshold')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples
@@ -53,35 +54,47 @@ nb_samples = nb_chunks*(nb_timesteps+2)
 print("nb_samples: %d" % (nb_samples))
 features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 
-# normalise
+# Reshape into "chunks" (batch, nb_timesteps+2, channels) for conv1D.  We need
+# timesteps+2 to have a sample either side for conv1d in "valid" mode.
+
+train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps+2, eband_K)
+print(train.shape)
+
+# Concatentate the training material with same sequence of frames at a
+# bunch of different time shifts, to increase the amount of training material
+
+for i in range(1,nb_timesteps+2):
+    features1 = features[i:nb_samples-nb_timesteps-2+i,:].reshape(nb_chunks-1, nb_timesteps+2, eband_K)
+    train =  np.concatenate((train,features1))
+print(train.shape)
+
+# Optional mean removal of each chunk, and toss out chunks with mean beneath threshold
 if args.mean:
-    # remove mean of every vector
-    train_mean = np.mean(features, axis=1)
-    print("mean", features.shape,train_mean.shape)
-    for i in range(nb_samples):
-        features[i,:] -= train_mean[i]
+    nb_chunks = train.shape[0];
+    train_mean = np.zeros(nb_chunks)
+    j = 0;
+    for i in range(nb_chunks):
+        train_mean[i] = np.mean(train[i])
+        if train_mean[i] > args.mean_thresh:
+            train[j] = train[i] - train_mean[i]
+            j += 1
+    nb_chunks = j        
+    train = train[:nb_chunks];
+    print(train.shape)
 else:
     # remove global mean
     mean = np.mean(features, axis=0);
     features -= mean
     print("mean", mean)
     train_mean = mean*np.ones((nb_samples,eband_K))
-
-features *= train_scale
-
-print("std",np.std(features, axis=0))
-
-# reshape into (batch, timesteps, channels) for conv1D.  We
-# concatentate the training material with same sequence of frames at a
-# bunch of different time shifts
-train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps+2, eband_K)
-print(train.shape)
-for i in range(1,nb_timesteps+2):
-    features1 = features[i:nb_samples-nb_timesteps-2+i,:].reshape(nb_chunks-1, nb_timesteps+2, eband_K)
-    train =  np.concatenate((train,features1))
-print(train.shape)
+ 
+# The target we wish the network to generate is the "inner" nb_timesteps samples
 train_target=train[:,1:nb_timesteps+1,:]
 print(train_target.shape)
+
+# scale magnitude of training data to get std dev around 1 ish (adjusted by experiment)
+train *= train_scale
+print("std",np.std(features, axis=0))
 
 class CustomCallback(tf.keras.callbacks.Callback):
    def on_epoch_begin(self, epoch, logs=None):
@@ -133,15 +146,18 @@ vq_weights = vqvae.get_layer('vq').get_vq().numpy()
            
 # Analyse output -----------------------------------------------------------------------
 
-# back to original shape
 train_est = vqvae.predict(train, batch_size=batch_size)
 encoder_out = encoder.predict(train, batch_size=batch_size)
-train_target =  train_target.reshape(-1, eband_K)
-train = train.reshape(-1, eband_K)
+
+# add mean back on for each chunk, and scale back up
+for i in range(nb_chunks):
+    train_target[i] = train_target[i]/train_scale + train_mean[i]
+    train_est[i] = train_est[i]/train_scale + train_mean[i]
+
+# convert chunks back to original shape
+train_target = train_target.reshape(-1, eband_K)
 train_est = train_est.reshape(-1, eband_K)
-print(encoder_out.shape)
 encoder_out = encoder_out.reshape(-1, dim)
-print(train.shape, encoder_out.shape)
 
 # Plot training results -------------------------
 
@@ -168,7 +184,7 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
     return mse, msepf
 
 print("mse",train_target.shape, train_est.shape)
-mse,msepf = calc_mse(train_target/train_scale, train_est/train_scale, nb_samples, nb_features, 1)
+mse,msepf = calc_mse(train_target, train_est, nb_samples, nb_features, 1)
 print("mse: %4.2f dB*dB" % (mse))
 plt.figure(3)
 plt.plot(msepf)
@@ -195,11 +211,14 @@ count = np.zeros(args.num_embedding, dtype="int")
 for i in range(0, nb_samples, batch_size):
     count += vector_count(encoder_out[i:i+batch_size], vq_weights, dim, args.num_embedding)    
 
-
 plt.figure(5)
 plt.plot(count,'bo')
 plt.title('Vector Usage Counts for Stage 1')
 print(count)
+plt.show(block=False)
+
+plt.figure(6)
+plt.hist(train_mean, bins='fd')
 plt.show(block=False)
 
 # use PCA to plot encoder space and VQ in 2D -----------------------------------------
@@ -234,7 +253,7 @@ plt.close('all')
 # VQ Pager - plot input/output spectra to sanity check
 
 nb_plots = 8
-fs = 110;
+fs = 100;
 key = ' '
 while key != 'q':
     frames=range(fs,fs+nb_plots)
@@ -246,10 +265,10 @@ while key != 'q':
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frames[r];
-        plt.plot((train_mean[f]+train_target[f,:]/train_scale),'g')
-        plt.plot((train_mean[f]+train_est[f,:]/train_scale),'r')
+        plt.plot(train_target[f,:],'g')
+        plt.plot(train_est[f,:],'r')
         plt.ylim(0,80)
-        a_mse = np.mean((train_target[f,:]/train_scale-train_est[f,:]/train_scale)**2)
+        a_mse = np.mean((train_target[f,:]-train_est[f,:])**2)
         t = "f: %d %3.1f" % (f, a_mse)
         plt.title(t)
     plt.show(block=False)
