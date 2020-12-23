@@ -48,39 +48,38 @@ train_scale = args.scale
 
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
 nb_samples = int(len(features)/eband_K)
-nb_chunks = int(nb_samples/(nb_timesteps+2))
-nb_samples = nb_chunks*(nb_timesteps+2)
-print("nb_samples: %d" % (nb_samples))
-features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
+nb_chunks = int(nb_samples/nb_timesteps)
+nb_samples = nb_chunks*(nb_timesteps)
+print("nb_samples:", nb_samples, "nb_chunks:", nb_chunks)
+
+target = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 
 # Reshape into "chunks" (batch, nb_timesteps+2, channels) for conv1D.  We need
 # timesteps+2 to have a sample either side for conv1d in "valid" mode.
 
-train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps+2, eband_K)
-print(train.shape)
+target_padded = np.zeros((nb_chunks, nb_timesteps+2, nb_features));
+for i in range(1,nb_chunks-1):
+    target_padded[i] = target[i*nb_timesteps-1:(i+1)*nb_timesteps+1]
+print("target", target.shape, target_padded.shape)    
 
 # Optional mean removal of each chunk
 if args.mean:
-    train_mean = np.zeros(nb_chunks)
+    target_mean = np.zeros(nb_chunks)
     for i in range(nb_chunks):
-        train_mean[i] = np.mean(train[i])
-        train[i] -= train_mean[i]
+        target_mean[i] = np.mean(target_padded[i])
+        target_Padded[i] -= target_mean[i]
 else:
     # remove global mean
     mean = np.mean(features)
-    train -= mean
+    target_padded -= mean
     print("mean", mean)
-    train_mean = mean*np.ones(nb_chunks)
+    target_mean = mean*np.ones(nb_chunks)
  
 # scale magnitude of training data
-train *= train_scale
-print("std",np.std(train))
+target_padded *= train_scale
+print("std",np.std(target_padded))
 
-# The target we wish the network to generate is the "inner" nb_timesteps samples
-train_target=train[:,1:nb_timesteps+1,:]
-print(train_target.shape)
-
-# Model --------------------------------------------
+# Build model and load weights and VQ
 
 vqvae,encoder = vqvae_models(nb_timesteps, nb_features, dim, args.num_embedding)
 vqvae.summary()
@@ -94,19 +93,17 @@ with open(args.ampnn, 'rb') as f:
     vqvae.get_layer("conv1d_e").set_weights(np.load(f, allow_pickle=True))
 
 vq_weights = vqvae.get_layer('vq1').get_vq()
-train_est = vqvae.predict(train, batch_size=batch_size)
-encoder_out = encoder.predict(train, batch_size=batch_size)
+target_est = vqvae.predict(target_padded, batch_size=batch_size)
+encoder_out = encoder.predict(target_padded, batch_size=batch_size)
 
 # add mean back on for each chunk, and scale back up
 for i in range(nb_chunks):
-    train_target[i] = train_target[i]/train_scale + train_mean[i]
-    train_est[i] = train_est[i]/train_scale + train_mean[i]
+    target_est[i] = target_est[i]/train_scale + target_mean[i]
 
-# convert chunks back to original shape
-train_target = train_target.reshape(-1, eband_K)
-train_est = train_est.reshape(-1, eband_K)
+# convert ouput chunks back to original shape
+target_est = target_est.reshape(-1, eband_K)
 encoder_out = encoder_out.reshape(-1, dim)
-nb_samples = train_target.shape[0]
+print("target_est", target_est.shape, nb_samples)
 
 # Plot training results -------------------------
 
@@ -122,8 +119,8 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
     mse = e1/n
     return mse, msepf
 
-print("mse",train_target.shape, train_est.shape)
-mse,msepf = calc_mse(train_target, train_est, nb_samples, nb_features, 1)
+print("mse",target.shape, target_est.shape)
+mse,msepf = calc_mse(target, target_est, nb_samples, nb_features, 1)
 print("mse: %4.2f dB*dB" % (mse))
 
 plt.figure(1)
@@ -159,7 +156,7 @@ print(count)
 plt.show(block=False)
 
 plt.figure(4)
-plt.hist(train_mean, bins='fd')
+plt.hist(target_mean, bins='fd')
 plt.show(block=False)
 plt.title('Mean of each chunk')
 
@@ -183,10 +180,10 @@ while key != 'q':
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frames[r];
-        plt.plot(train_target[f,:],'g')
-        plt.plot(train_est[f,:],'r')
+        plt.plot(target[f,:],'g')
+        plt.plot(target_est[f,:],'r')
         plt.ylim(0,80)
-        a_mse = np.mean((train_target[f,:]-train_est[f,:])**2)
+        a_mse = np.mean((target[f,:]-target_est[f,:])**2)
         t = "f: %d %3.1f" % (f, a_mse)
         plt.title(t)
     plt.show(block=False)
