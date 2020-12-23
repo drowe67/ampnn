@@ -67,7 +67,7 @@ class VQ_kmeans(tf.keras.layers.Layer):
         tf.keras.backend.update(self.ewma_centroid_sum, vq)
         
     def get_vq(self):
-        return self.vq
+        return self.vq.numpy()
 
 # Section 3.2 of [2]: custom layer to copy gradient from decoder input z_q(x) to encoder output z_e(x)
 # transparent layer (input = output), but stop any enc weights being changed based on VQ error,

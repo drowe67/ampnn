@@ -3,6 +3,7 @@
 '''
 
 import tensorflow as tf
+import numpy as np
 from vq_kmeans import *
 
 def vqvae_models(nb_timesteps, nb_features, dim, num_embedding):
@@ -12,7 +13,7 @@ def vqvae_models(nb_timesteps, nb_features, dim, num_embedding):
     # Encoder
     z_e = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='valid', name="conv1d_a")(x)
     z_e = tf.keras.layers.MaxPooling1D(pool_size=2, padding='same')(z_e)
-    z_e = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same')(z_e)
+    z_e = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same', name="conv1d_b")(z_e)
 
     # VQ
     z_q1 = VQ_kmeans(dim, num_embedding, name="vq1")(z_e)
@@ -22,13 +23,14 @@ def vqvae_models(nb_timesteps, nb_features, dim, num_embedding):
     z_q_ = CopyGradient()([z_q, z_e])
 
     # Decoder
-    p = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same')(z_q_)    
+    p = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same', name="conv1d_c")(z_q_)    
     p = tf.keras.layers.UpSampling1D(size=2)(p)
-    p = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='same')(p)
-    p = tf.keras.layers.Conv1D(nb_features, 3, padding='same')(p)
+    p = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='same', name="conv1d_d")(p)
+    p = tf.keras.layers.Conv1D(nb_features, 3, padding='same', name="conv1d_e")(p)
 
     vqvae = tf.keras.Model(x, p)
     encoder = tf.keras.Model(x, z_e)
     vqvae.add_loss(commitment_loss(z_e, z_q))
 
     return vqvae, encoder
+
