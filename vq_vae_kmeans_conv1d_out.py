@@ -3,9 +3,12 @@
   Generate output files using rate K vector quantisation using two stage VQ-VAE, kmeans, and conv1.
 
   Codec 2 newamp1 K=20 mel spaced bands:
+       $ ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --rateK --rateKout dev-clean-8k-K20.f32
+       $ ./vq_vae_kmeans_conv1d.py dev-clean-8k-K20.f32 --eband_K 20 --epochs 5 --scale 0.005 --nnout test.npy
+         -> 11.48dB*dB
        $ sox -t .sw -r 8000 ~/Downloads/train_8k.sw -t .sw - trim 0 2.5 | ~/codec2/build_linux/src/c2sim - --rateK --rateKout test.f32
-       $ ./vq_vae_kmeans_conv1d.py dev-clean-8k-K20.f32 --eband_K 20 --epochs 5 --scale 0.005 --nb_samples 100000 --nnout test.npy --num_embedding 128
-       $ ./vq_vae_kmeans_conv1d_out.py test.npy test.f32 test_out.f32 --eband_K 20 --scale 0.005 --num_embedding 128
+       $ ./vq_vae_kmeans_conv1d_out.py test.npy test.f32 test_out.f32 --eband_K 20 --scale 0.005
+         -> 21.6 dB*dB
        $ sox -t .sw -c 1 -r 8000 ~/Downloads/train_8k.sw -t .sw - trim 0 2.5 | ~/codec2/build_linux/src/c2sim - --rateK --rateKin test_out.f32 -o test1.raw
 
 '''
@@ -40,6 +43,8 @@ parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of
 parser.add_argument('--num_embedding', type=int, default=2048,  help='number of embedded vectors')
 parser.add_argument('--scale', type=float, default=0.125,  help='apply this gain to features when read in')
 parser.add_argument('--mean', action='store_true', help='Extract mean from each chunk')
+parser.add_argument('--mean_thresh', type=float, default=0.0,  help='Lower limit of frame mean')
+parser.add_argument('--plots', action='store_true', help='diagnostic plots and VQ pager')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples
@@ -57,10 +62,18 @@ print("nb_samples:", nb_samples, "nb_chunks:", nb_chunks)
 
 target = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 
+# Optional lower limit mean 
+for i in range(nb_samples):
+    amean = np.mean(target[i])
+    if amean < args.mean_thresh:
+        target[i] += args.mean_thresh - amean;
+print(target[0])
+
 # Reshape into "chunks" (batch, nb_timesteps+2, channels) for conv1D.  We need
 # timesteps+2 to have a sample either side for conv1d in "valid" mode.
 
 target_padded = np.zeros((nb_chunks, nb_timesteps+2, nb_features));
+target_padded[0,1:] = target[0:nb_timesteps+1]
 for i in range(1,nb_chunks-1):
     target_padded[i] = target[i*nb_timesteps-1:(i+1)*nb_timesteps+1]
 print("target", target.shape, target_padded.shape)    
@@ -77,7 +90,7 @@ else:
     target_padded -= mean
     print("mean", mean)
     target_mean = mean*np.ones(nb_chunks)
- 
+
 # scale magnitude of training data
 target_padded *= train_scale
 print("std",np.std(target_padded))
@@ -132,7 +145,9 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
 print("mse",target.shape, target_est.shape)
 mse,msepf = calc_mse(target, target_est, nb_samples, nb_features, 1)
 print("mse: %4.2f dB*dB" % (mse))
-quit()
+if args.plots == False:
+    quit();
+    
 plt.figure(1)
 plt.plot(msepf)
 plt.title('Spectral Distortion dB*dB per frame')
@@ -169,11 +184,6 @@ plt.figure(4)
 plt.hist(target_mean, bins='fd')
 plt.show(block=False)
 plt.title('Mean of each chunk')
-
-plt.pause(0.0001)
-print("Press any key to start VQ pager....")
-key = getch.getch()
-plt.close('all')
 
 # VQ Pager - plot input/output spectra to sanity check
 
