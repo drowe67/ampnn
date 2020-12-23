@@ -4,7 +4,10 @@
 
   Codec 2 newamp1 K=20 mel spaced bands:
        $ sox -t .sw -r 8000 ~/Downloads/train_8k.sw -t .sw - trim 0 2.5 | ~/codec2/build_linux/src/c2sim - --rateK --rateKout test.f32
-       $ ./vq_vae_kmeans_conv1d_out.py ampnn.h5 test.f32 test_out.f32 --eband_K 20 --scale 0.005
+       $ ./vq_vae_kmeans_conv1d.py dev-clean-8k-K20.f32 --eband_K 20 --epochs 5 --scale 0.005 --nb_samples 100000 --nnout test.npy --num_embedding 128
+       $ ./vq_vae_kmeans_conv1d_out.py test.npy test.f32 test_out.f32 --eband_K 20 --scale 0.005 --num_embedding 128
+       $ sox -t .sw -c 1 -r 8000 ~/Downloads/train_8k.sw -t .sw - trim 0 2.5 | ~/codec2/build_linux/src/c2sim - --rateK --rateKin test_out.f32 -o test1.raw
+
 '''
 
 import logging
@@ -47,8 +50,8 @@ train_scale = args.scale
 # read in rate K vectors ---------------------------------------------------------
 
 features = np.fromfile(args.featurefile, dtype='float32', count = args.nb_samples*eband_K)
-nb_samples = int(len(features)/eband_K)
-nb_chunks = int(nb_samples/nb_timesteps)
+nb_samples_file = int(len(features)/eband_K)
+nb_chunks = int(nb_samples_file/nb_timesteps)
 nb_samples = nb_chunks*(nb_timesteps)
 print("nb_samples:", nb_samples, "nb_chunks:", nb_chunks)
 
@@ -67,7 +70,7 @@ if args.mean:
     target_mean = np.zeros(nb_chunks)
     for i in range(nb_chunks):
         target_mean[i] = np.mean(target_padded[i])
-        target_Padded[i] -= target_mean[i]
+        target_padded[i] -= target_mean[i]
 else:
     # remove global mean
     mean = np.mean(features)
@@ -105,6 +108,13 @@ target_est = target_est.reshape(-1, eband_K)
 encoder_out = encoder_out.reshape(-1, dim)
 print("target_est", target_est.shape, nb_samples)
 
+# make output file the same size despite chunking
+target_est = np.concatenate((target_est, np.zeros((nb_samples_file-nb_samples,nb_features))))
+print(target_est.shape, nb_samples_file)
+target_est_out = target_est.astype(np.float32);
+print(features.shape, target_est_out.shape, target_est_out.dtype);
+target_est_out.tofile(args.featurefile_out)
+
 # Plot training results -------------------------
 
 # Calculate total mean square error and mse per frame
@@ -122,7 +132,7 @@ def calc_mse(train, train_est, nb_samples, nb_features, dec):
 print("mse",target.shape, target_est.shape)
 mse,msepf = calc_mse(target, target_est, nb_samples, nb_features, 1)
 print("mse: %4.2f dB*dB" % (mse))
-
+quit()
 plt.figure(1)
 plt.plot(msepf)
 plt.title('Spectral Distortion dB*dB per frame')
@@ -168,7 +178,7 @@ plt.close('all')
 # VQ Pager - plot input/output spectra to sanity check
 
 nb_plots = 8
-fs = 100;
+fs = 0;
 key = ' '
 while key != 'q':
     frames=range(fs,fs+nb_plots)
