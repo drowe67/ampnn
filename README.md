@@ -33,7 +33,11 @@ The plot is a 2D histogram of the encoder space, white dots are the stage 1 VQ e
 | vq_vae_kmeans_demo.py | Simple demo of kmeans VQVAE in TF | Yes | 
 | vq_vae_demo_2stage.py | vq_vae_demo.py extended to two stage VQ | Cool demo | 
 | vq_vae_ratek.py | Single stage VQ-VAE with single Dense layer | No |
-| vq_vae_conv1d_2stage.py | Two stage VQ-VAE with two conv1D layers | Yes, reasonable spectral distortion, cool plots |
+| vq_vae_conv1d_2stage.py | Two stage VQ-VAE with two conv1D layers and simple/slow VQ training | Yes, reasonable spectral distortion, cool plots |
+| vqvae_twostage.py | Two stage VQ VAE used by the scripts below | Yes |
+| vq_vae_kmeans_conv1d.py | Two stage kmeans trained VQ-VAE with two conv1D layers | Yes |
+| vq_vae_kmeans_conv1d_out.py | Generates output for Codec 2 from the NN trained above.  Not great output at this stage :-) | Yes |
+| vqvae_synth_one.sh | Script to generate output speech files from the above | Yes |
 
 ## Amplitude Sample Rate Conversion Using Neural Nets
 

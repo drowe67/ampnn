@@ -116,7 +116,7 @@ encoder_out = encoder.predict(target_padded, batch_size=batch_size)
 for i in range(nb_chunks):
     target_est[i] = target_est[i]/train_scale + target_mean[i]
 
-# convert ouput chunks back to original shape
+# convert output chunks back to original shape
 target_est = target_est.reshape(-1, eband_K)
 encoder_out = encoder_out.reshape(-1, dim)
 print("target_est", target_est.shape, nb_samples)
