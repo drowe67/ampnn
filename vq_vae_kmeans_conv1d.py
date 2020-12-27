@@ -106,6 +106,7 @@ print("std",np.std(train))
 train_target=train[:,1:nb_timesteps+1,:]
 print(train_target.shape)
 
+# Plot the VQ space as we train
 class CustomCallback(tf.keras.callbacks.Callback):
    def on_epoch_begin(self, epoch, logs=None):
        plt.figure(1)
@@ -123,8 +124,24 @@ class CustomCallback(tf.keras.callbacks.Callback):
 vqvae, encoder = vqvae_models(nb_timesteps, nb_features, dim, args.num_embedding)
 vqvae.summary()
 
+loss_weights = np.ones(nb_features)
+loss_weights[0] = 0.5
+loss_weights[nb_features-1] = 0.5
+
+# set up a custom loss function that weights most important parts of speech
+w_vec = np.ones(nb_features)
+w_vec[2:10] = 2
+w_vec[0] = 0.5
+w_vec[-1] = 0.5
+w_timestep = np.zeros((nb_timesteps, nb_features))
+w_timestep[:] = w_vec
+print(w_timestep)
+w = tf.convert_to_tensor(w_timestep, dtype=tf.float32)
+def weighted_loss(y_true, y_pred):
+    return tf.reduce_mean(tf.math.square(w*(y_pred - y_true)))
+
 adam = tf.keras.optimizers.Adam(lr=0.001)
-vqvae.compile(loss='mse', optimizer=adam)
+vqvae.compile(loss=weighted_loss, optimizer=adam)
 
 # seed VQs
 vq_initial = np.random.rand(args.num_embedding,dim)*0.1 - 0.05
@@ -134,6 +151,7 @@ vqvae.get_layer('vq2').set_vq(vq_initial)
 history = vqvae.fit(train, train_target, batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,callbacks=[CustomCallback()])
 
+# save_model() doesn't work for me so saving model the hard way ....
 if args.nnout is not None:
     with open(args.nnout, 'wb') as f:
         np.save(f, vqvae.get_layer("conv1d_a").get_weights(), allow_pickle=True)
