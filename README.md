@@ -43,7 +43,7 @@ The plot is a 2D histogram of the encoder space, white dots are the stage 1 VQ e
 
 Some of the scripts in this repo (`eband_*.py`, `newamp1_train.py`) explore the use of Neural Networks (NN) in resampling between rate K and rate L for Codec 2.
 
-Codec 2 models speech as a harmonic series of sine waves, each with it's own frequency, amplitude and phase.  The frequencies are approximated at harmonics of the pitch or fundamental frequency.  A reasonable model of the phases can be recovered from the amplitudes.
+Codec 2 models speech as a harmonic series of sine waves, each with it's own frequency, amplitude and phase.  The frequencies are approximated as harmonics of the pitch or fundamental frequency.  A reasonable model of the phases can be recovered from the amplitudes.
 
 Accurate representation of the sine wave amplitudes {Am} m=1...L is important for good quality speech.  The number of amplitudes in each frame L is dependent on the pitch L=P/2, which is time varying between (typically between L=10 and L=80).  However for transmission at a fixed bit rate, a fixed number of parameters is desirable.
 
