@@ -4,7 +4,7 @@
 #
 # Python Codec 2 model records I/O
 
-import sys
+import sys, os
 import construct
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 max_amp = 160
 Fs      = 8000
 width   = 256
+nb_bytes_per_codec2_record = 1300
 
 codec2_model = construct.Struct(
     "Wo" / construct.Float32l,
@@ -22,19 +23,9 @@ codec2_model = construct.Struct(
     )
 
 def read(filename, max_nb_samples=1E32):
-    
-    # Determine number of records in file, not very Pythonic I know :-)
 
-    nb_samples = 0
-    with open(filename, 'rb') as f:
-        while True and (nb_samples < max_nb_samples):
-            try:
-                model = codec2_model.parse_stream(f)
-                nb_samples += 1
-            except:
-                f.close()
-                break
-
+    nb_samples = int(min(max_nb_samples, os.stat(filename).st_size/nb_bytes_per_codec2_record));
+    print("nb_samples: ", nb_samples);
     Wo = np.zeros(nb_samples)
     L = np.zeros(nb_samples, dtype=int)
     A = np.zeros((nb_samples, max_amp+1))
@@ -42,6 +33,7 @@ def read(filename, max_nb_samples=1E32):
     voiced = np.zeros(nb_samples, dtype=int)
 
     # Read Codec 2 model records into numpy arrays for further work
+    print("reading twice...")
     
     with open(filename, 'rb') as f:
         for i in range(nb_samples):
