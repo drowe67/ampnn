@@ -124,21 +124,14 @@ class CustomCallback(tf.keras.callbacks.Callback):
 vqvae, encoder = vqvae_models(nb_timesteps, nb_features, dim, args.num_embedding)
 vqvae.summary()
 
-loss_weights = np.ones(nb_features)
-loss_weights[0] = 0.5
-loss_weights[nb_features-1] = 0.5
-
-# set up a custom loss function that weights most important parts of speech
+# ability to set up a custom loss function that weights most important parts of speech
 w_vec = np.ones(nb_features)
-w_vec[2:10] = 2
-w_vec[0] = 0.5
-w_vec[-1] = 0.5
 w_timestep = np.zeros((nb_timesteps, nb_features))
 w_timestep[:] = w_vec
 print(w_timestep)
 w = tf.convert_to_tensor(w_timestep, dtype=tf.float32)
 def weighted_loss(y_true, y_pred):
-    return tf.reduce_mean(tf.math.square(w*(y_pred - y_true)))
+    return tf.reduce_mean(tf.math.square((y_pred - y_true)))
 
 adam = tf.keras.optimizers.Adam(lr=0.001)
 vqvae.compile(loss=weighted_loss, optimizer=adam)
