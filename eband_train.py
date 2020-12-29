@@ -8,8 +8,8 @@
 # using small dimension vectors that will be easier to quantise.
 
 '''
-  usage: ./src/c2sim ~/Downloads/all_speech_8k.sw --bands ~/ampnn/all_speech_8k.f32 --modelout ~/ampnn/all_speech_8k.model 
-         ./eband_train.py all_speech_8k.f32 all_speech_8k.model --epochs 10
+  usage: ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --bands dev-clean-8k.f32 --modelout dev-clean-8k.model
+         ./eband_train.py dev-clean-8k.f32 dev-clean-8k.model --epochs 10 --noplots
 '''
 
 import logging
