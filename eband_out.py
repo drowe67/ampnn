@@ -8,8 +8,9 @@
 # rate K -> rate L conversion
 
 '''
-  usage: sox -t .sw -r 8000 ~/Downloads/train_8k.sw -t .sw - trim 0 2.5 | c2sim - --bands sample.f32 --modelout sample.model 
-         ./eband_out.py ampnn.h5 sample.f32 sample.model --modelout sample_out.model
+  usage: ~/codec2/build_linux/src/c2sim wav/big_dog.raw --bands big_dog.f32 --modelout big_dog.model
+         ./eband_out.py ampnn.h5 big_dog.f32 big_dog.model --modelout big_dog_out.model
+         ~/codec2/build_linux/src/c2sim wav/big_dog.raw --modelin big_dog_out.model -o big_dog_out.raw
 '''
 
 import logging
@@ -41,12 +42,12 @@ parser = argparse.ArgumentParser(description='Decode rate K -> rate L using a NN
 parser.add_argument('ampnn', help='amp NN trained .h5 file')
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('modelin', help='Input Codec 2 model records')
-parser.add_argument('--modelout', help='Ouput Codec 2 model records with reconstructed rate L vectors')
+parser.add_argument('--modelout', help='Output Codec 2 model records with reconstructed rate L vectors')
 parser.add_argument('--frame', type=int, default="1", help='start frames to view')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
-parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
+parser.add_argument('--gain', type=float, default=0.1, help='scale factor for eband vectors')
 parser.add_argument('--dec', type=int, default=1, help='input rate K decimation (lin interp)')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--Fs', type=int, default=8000, help='scale factor for eband vectors')
@@ -77,7 +78,7 @@ if nb_samples > nb_samples1:
     print(features.shape, pad.shape)
     features=np.concatenate((features, pad))
 print(features.shape)
-rateK = 0.5*features[:,args.eband_start:args.eband_start+eband_K]/args.gain
+rateK = features[:,args.eband_start:args.eband_start+eband_K]*args.gain
 
 # optional linear interp/dec
 if args.dec != 1:
@@ -102,7 +103,7 @@ model.summary()
 model.load_weights(args.ampnn)
 
 # run model
-amp_sparse_est = model.predict(rateK)
+amp_sparse_est = model.predict(rateK)/args.gain;
 
 # extract amplitudes from sparse vector and estimate 
 # quantisation error (mean squared error between original and
@@ -116,8 +117,8 @@ for i in range(nb_samples):
     ev = np.zeros(L[i])
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
-        A_est[i,m] = 10 ** amp_sparse_est[i,bin]
-        ev[m-1] = 20*amp_sparse_est[i,bin] - 20*np.log10(A[i,m])
+        A_est[i,m] = 10 ** ((amp_sparse_est[i,bin])/20)
+        ev[m-1] = amp_sparse_est[i,bin] - 20*np.log10(A[i,m])
         e = ev[m-1] ** 2
         n+=1; e1 += e; e2 += e;
     mse[i] = e2/L[i]

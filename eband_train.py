@@ -44,14 +44,14 @@ def list_str(values):
 parser = argparse.ArgumentParser(description='Train a NN to decode eband rate K -> rate L')
 parser.add_argument('featurefile', help='f32 file of eband vectors')
 parser.add_argument('modelfile', help='Codec 2 model records with rate L vectors')
-parser.add_argument('--frame', type=int, default=50, help='frames to start veiwing')
+parser.add_argument('--frame', type=int, default=1, help='frames to start veiwing')
 parser.add_argument('--epochs', type=int, default=25, help='Number of training epochs')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
 parser.add_argument('--eband_start', type=int, default=0, help='Start element of eband vector')
 parser.add_argument('--eband_K', type=int, default=default_eband_K, help='Length of eband vector')
 parser.add_argument('--nnout', type=str, default="ampnn.h5", help='Name of output NN we have trained')
 parser.add_argument('--noplots', action='store_true', help='plot unvoiced frames')
-parser.add_argument('--gain', type=float, default=1.0, help='scale factor for eband vectors')
+parser.add_argument('--gain', type=float, default=0.1, help='scale factor for eband vectors')
 parser.add_argument('--Fs', type=int, default=8000, help='scale factor for eband vectors')
 args = parser.parse_args()
 
@@ -77,15 +77,17 @@ nb_samples1 = len(features)/nb_features
 print("nb_samples1: %d" % (nb_samples1))
 assert nb_samples == nb_samples1
 features = np.reshape(features, (nb_samples, nb_features))
-# rateK input is log10(energy), output is log10(amplitude)
-rateK = 0.5*features[:,args.eband_start:args.eband_start+eband_K]/args.gain
-
+rateK = features[:,args.eband_start:args.eband_start+eband_K]*args.gain
+      
 # set up sparse amp output vectors
+print("building sparse output vecs...")
 amp_sparse = np.zeros((nb_samples, width))
 for i in range(nb_samples):
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
-        amp_sparse[i,bin] = np.log10(A[i,m])
+        amp_sparse[i,bin] = 20*np.log10(A[i,m])*args.gain
+
+print("rateK mean:", np.mean(rateK,axis=1), "std:", np.std(rateK,axis=1))
 
 # our model
 model = tf.keras.models.Sequential()
@@ -110,20 +112,9 @@ def sparse_loss(y_true, y_pred):
     n = tf.reduce_sum(mask)
     return tf.reduce_sum(tf.math.square((y_pred - y_true)*mask))/n
 
-'''
-# testing custom loss function
-y_true = Input(shape=(None,))
-y_pred = Input(shape=(None,))
-loss_func = K.Function([y_true, y_pred], [sparse_loss(y_true, y_pred)])
-assert loss_func([[[0,1,0]], [[2,2,2]]]) == np.array([1])
-assert loss_func([[[1,1,0]], [[3,2,2]]]) == np.array([2.5])
-assert loss_func([[[0,1,0]], [[0,2,0]]]) == np.array([1])
-'''
-
 # fit the model
 from keras import optimizers
-sgd = optimizers.SGD(lr=0.05, decay=1e-6, momentum=0.9, nesterov=True)
-model.compile(loss=sparse_loss, optimizer=sgd)
+model.compile(loss=sparse_loss, optimizer='adam')
 history = model.fit(rateK, amp_sparse, batch_size=nb_batch, epochs=args.epochs, validation_split=0.1)
 model.save(args.nnout)
 
@@ -145,7 +136,7 @@ for i in range(nb_samples):
     for m in range(1,L[i]+1):
         bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
         amp_est[i,m] = amp_sparse_est[i,bin]
-        ev[m-1] = 20*amp_sparse_est[i,bin] - 20*amp_sparse[i,bin]
+        ev[m-1] = (amp_sparse_est[i,bin] - amp_sparse[i,bin])/args.gain
         e = ev[m-1] ** 2
         e1 += e; e2 += e; n+=1
     mse[i] = e2/L[i]
@@ -199,8 +190,8 @@ while loop:
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frame + r;
         plt.plot(20*(np.log10(A[f,1:L[f]+1])),'g')
-        plt.plot(20*(amp_est[f,1:L[f]+1]),'r')
-        diff = 20*np.log10(A[f,1:L[f]+1]) - 20*amp_est[f,1:L[f]+1]
+        plt.plot(amp_est[f,1:L[f]+1]/args.gain,'r')
+        diff = 20*np.log10(A[f,1:L[f]+1]) - amp_est[f,1:L[f]+1]/args.gain
         a_mse = np.sum(diff**2)/L[f]
         a_var = np.var(diff)
         t = "f: %d %3.1f  %3.1f" % (f, a_mse, a_var)
@@ -222,7 +213,7 @@ while loop:
     for r in range(nb_plots):
         plt.subplot(nb_plotsy,nb_plotsx,r+1)
         f = frame + r;
-        A_est = 10**(amp_est[f,:])
+        A_est = 10**((amp_est[f,:]/args.gain)/20)
         s_est = sample_time(f, A_est)
         plt.plot(range(-N,N),s[r,:],'g')
         plt.plot(range(-N,N),s_est,'r')
