@@ -43,6 +43,7 @@ parser.add_argument('--scale', type=float, default=0.125,  help='apply this gain
 parser.add_argument('--nnout', type=str, help='Name of output NN we have trained')
 parser.add_argument('--mean', action='store_true', help='Extract mean from each chunk')
 parser.add_argument('--mean_thresh', type=float, default=0.0,  help='Discard chunks with less than this mean threshold')
+parser.add_argument('--narrowband', action='store_true', help='weighting function ignores the first and last two bands')
 args = parser.parse_args()
 dim = args.embedding_dim
 nb_samples = args.nb_samples
@@ -57,6 +58,7 @@ nb_samples = int(len(features)/eband_K)
 nb_chunks = int(nb_samples/(nb_timesteps+2))
 nb_samples = nb_chunks*(nb_timesteps+2)
 print("nb_samples: %d" % (nb_samples))
+features = np.clip(features,0,None); # no crazy low values
 features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 
 # Reshape into "chunks" (batch, nb_timesteps+2, channels) for conv1D.  We need
@@ -76,14 +78,15 @@ nb_chunks = train.shape[0];
  
 # Optional removal of chunks with mean beneath threshold
 j = 0;
+train_mean_orig = np.zeros(nb_chunks)
 for i in range(nb_chunks):
-    amean = np.mean(train[i])
-    if amean > args.mean_thresh:
+    train_mean_orig[i] = np.mean(train[i])
+    if train_mean_orig[i] > args.mean_thresh:
         train[j] = train[i]
         j += 1
 nb_chunks = j        
 train = train[:nb_chunks];
-print(nb_chunks, train.shape)
+print("after mean_thresh removal: ", nb_chunks, train.shape)
 
 # Optional mean removal of each chunk
 if args.mean:
@@ -126,12 +129,14 @@ vqvae.summary()
 
 # ability to set up a custom loss function that weights most important parts of speech
 w_vec = np.ones(nb_features)
+if args.narrowband:
+    w_vec[0] = 0; w_vec[1] = 0; w_vec[-2] = 0; w_vec[-1] = 0;
 w_timestep = np.zeros((nb_timesteps, nb_features))
 w_timestep[:] = w_vec
 print(w_timestep)
 w = tf.convert_to_tensor(w_timestep, dtype=tf.float32)
 def weighted_loss(y_true, y_pred):
-    return tf.reduce_mean(tf.math.square((y_pred - y_true)))
+    return tf.reduce_mean(tf.math.square(w*(y_pred - y_true)))
 
 adam = tf.keras.optimizers.Adam(lr=0.001)
 vqvae.compile(loss=weighted_loss, optimizer=adam)
@@ -168,8 +173,8 @@ for i in range(nb_chunks):
     train_est[i] = train_est[i]/train_scale + train_mean[i]
 
 # convert chunks back to original shape
-train_target = train_target.reshape(-1, eband_K)
-train_est = train_est.reshape(-1, eband_K)
+train_target = w_vec*train_target.reshape(-1, eband_K)
+train_est = w_vec*train_est.reshape(-1, eband_K)
 encoder_out = encoder_out.reshape(-1, dim)
 nb_samples = train_target.shape[0]
 
@@ -215,7 +220,7 @@ print(count)
 plt.show(block=False)
 
 plt.figure(6)
-plt.hist(train_mean, bins='fd')
+plt.hist(train_mean_orig, bins='fd')
 plt.show(block=False)
 plt.title('Mean of each chunk')
 
