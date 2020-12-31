@@ -14,7 +14,7 @@
 '''
 
 import logging
-import os, argparse, sys
+import os, argparse, sys, getch
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -161,9 +161,8 @@ plt.show(block=False)
 # ebands:
 # 0 200 400 600 800 1k 1.2 1.4 1.6 2k 2.4 2.8 3.2 4k 4.8 5.6 6.8 8k
 
-print("Press any key for next page, click on last figure to finish....")
-loop=True
-while loop and frame < nb_samples:
+key = ' '
+while key != 'q':
     plt.figure(3)
     plt.tight_layout()
     plt.clf()
@@ -201,7 +200,12 @@ while loop and frame < nb_samples:
         plt.ylim(-mx,mx)
     plt.show(block=False)
 
-    loop=plt.waitforbuttonpress(0)
-    frame+=nb_plots
+    plt.pause(0.0001)
+    print("n-next b-back q-quit", end='\r', flush=True);
+    key = getch.getch()
+    if key == 'n':
+        frame += nb_plots
+    if key == 'b':
+        frame -= nb_plots
    
 plt.close()
