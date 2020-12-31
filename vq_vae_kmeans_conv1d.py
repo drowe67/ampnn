@@ -33,14 +33,14 @@ nb_timesteps = 4
 # Command line ----------------------------------------------
 
 parser = argparse.ArgumentParser(description='Two stage VQ-VAE for rate K vectors')
-parser.add_argument('featurefile', help='f32 file of spectral mag vectors, each element is log10(energy), i.e. dB/10')
+parser.add_argument('featurefile', help='f32 file of spectral mag vectors in dB, e.g. 10*log10(energy)')
 parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
-parser.add_argument('--eband_K', type=int, default=14, help='Length of eband vector')
-parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
-parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of embedding vectors')
-parser.add_argument('--num_embedding', type=int, default=2048,  help='number of embedded vectors')
+parser.add_argument('--eband_K', type=int, default=14, help='width of each spectral mag vector')
+parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of spectral mag vectors to train on')
+parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of embedding vectors (VQ dimension)')
+parser.add_argument('--nb_embedding', type=int, default=2048,  help='number of embedded vectors (VQ size)')
 parser.add_argument('--scale', type=float, default=0.125,  help='apply this gain to features when read in')
-parser.add_argument('--nnout', type=str, help='Name of output NN we have trained')
+parser.add_argument('--nnout', type=str, help='Name of output NN we have trained (.npy format)')
 parser.add_argument('--mean', action='store_true', help='Extract mean from each chunk')
 parser.add_argument('--mean_thresh', type=float, default=0.0,  help='Discard chunks with less than this mean threshold')
 parser.add_argument('--narrowband', action='store_true', help='weighting function ignores the first and last two bands')
@@ -65,7 +65,7 @@ features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 # timesteps+2 to have a sample either side for conv1d in "valid" mode.
 
 train = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps+2, eband_K)
-print(train.shape)
+print("reshaped:",train.shape)
 
 # Concatentate the training material with same sequence of frames at a
 # bunch of different time shifts, to increase the amount of training material
@@ -73,7 +73,7 @@ print(train.shape)
 for i in range(1,nb_timesteps+2):
     features1 = features[i:nb_samples-nb_timesteps-2+i,:].reshape(nb_chunks-1, nb_timesteps+2, eband_K)
     train =  np.concatenate((train,features1))
-print(train.shape)
+print("concat timeshifts:", train.shape)
 nb_chunks = train.shape[0];
  
 # Optional removal of chunks with mean beneath threshold
@@ -124,7 +124,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
    
 # Model --------------------------------------------
 
-vqvae, encoder = vqvae_models(nb_timesteps, nb_features, dim, args.num_embedding)
+vqvae, encoder = vqvae_models(nb_timesteps, nb_features, dim, args.nb_embedding)
 vqvae.summary()
 
 # ability to set up a custom loss function that weights most important parts of speech
@@ -142,7 +142,7 @@ adam = tf.keras.optimizers.Adam(lr=0.001)
 vqvae.compile(loss=weighted_loss, optimizer=adam)
 
 # seed VQs
-vq_initial = np.random.rand(args.num_embedding,dim)*0.1 - 0.05
+vq_initial = np.random.rand(args.nb_embedding,dim)*0.1 - 0.05
 vqvae.get_layer('vq1').set_vq(vq_initial)
 vqvae.get_layer('vq2').set_vq(vq_initial)
 
@@ -209,9 +209,9 @@ plt.title('Histogram of Spectral Distortion dB*dB out to 2*sigma')
 plt.hist(reject_outliers(msepf), bins='fd')
 plt.show(block=False)
 
-count = np.zeros(args.num_embedding, dtype="int")
+count = np.zeros(args.nb_embedding, dtype="int")
 for i in range(0, nb_samples, batch_size):
-    count += vector_count(encoder_out[i:i+batch_size], vq_weights, dim, args.num_embedding)    
+    count += vector_count(encoder_out[i:i+batch_size], vq_weights, dim, args.nb_embedding)    
 
 plt.figure(5)
 plt.plot(count,'bo')

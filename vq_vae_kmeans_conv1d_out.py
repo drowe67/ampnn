@@ -35,7 +35,7 @@ nb_timesteps = 4
 # Command line ----------------------------------------------
 
 parser = argparse.ArgumentParser(description='Two stage VQ-VAE for rate K vectors')
-parser.add_argument('ampnn', help='model weights and VQs in .npy')
+parser.add_argument('nnin', help='model weights and VQs in .npy')
 parser.add_argument('featurefile', help='input f32 file of spectral mag vectors, each element is 10*log10(energy), i.e. dB')
 parser.add_argument('--featurefile_out', help='output f32 file of spectral mag vectors, each element is 10*log10(energy), i.e. dB')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of frames to train on')
@@ -100,7 +100,7 @@ print("std",np.std(target_padded))
 
 vqvae,encoder = vqvae_models(nb_timesteps, nb_features, dim, args.num_embedding)
 vqvae.summary()
-with open(args.ampnn, 'rb') as f:
+with open(args.nnin, 'rb') as f:
     vqvae.get_layer("conv1d_a").set_weights(np.load(f, allow_pickle=True))
     vqvae.get_layer("conv1d_b").set_weights(np.load(f, allow_pickle=True))
     vqvae.get_layer("vq1").set_vq(np.load(f, allow_pickle=True))
