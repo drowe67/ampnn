@@ -33,7 +33,7 @@ def read(filename, max_nb_samples=1E32):
     voiced = np.zeros(nb_samples, dtype=int)
 
     # Read Codec 2 model records into numpy arrays for further work
-    print("reading twice...")
+    print("reading codec2 records...")
     
     with open(filename, 'rb') as f:
         for i in range(nb_samples):
