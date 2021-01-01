@@ -5,7 +5,8 @@
   Integrates vq_vae_kmeans_conv1d.py and ebands_train.py using two stage VQ-VAE, kmeans, and conv1.
 
   $ ~/codec2/build_linux/src/c2sim ~/Downloads/dev-clean-8k.sw --bands dev-clean-8k.f32 --modelout dev-clean-8k.model
-  $ ./eband_vq_am.py dev-clean-8k.f32 dev-clean-8k.model
+  $ ./model_to_sparse.py dev-clean-8k.model dev-clean-8k-sparse.f32
+  $ ./eband_vq_am.py dev-clean-8k.f32 dev-clean-8k-sparse.f32
 
 '''
 
@@ -97,38 +98,40 @@ print("concat timeshifts:", features_chunks.shape, amp_sparse_chunks.shape)
 nb_chunks = features_chunks.shape[0];
 
 
-'''
 # Optional removal of chunks with mean beneath threshold
 j = 0;
-train_mean_orig = np.zeros(nb_chunks)
+mean_orig = np.zeros(nb_chunks)
 for i in range(nb_chunks):
-    train_mean_orig[i] = np.mean(train[i])
-    if train_mean_orig[i] > args.mean_thresh:
-        train[j] = train[i]
+    mean_orig[i] = np.mean(features_chunks[i])
+    if mean_orig[i] > args.mean_thresh:
+        features_chunks[j] = features_chunks[i]
+        amp_sparse_chunks[j] = amp_sparse_chunks[i]
         j += 1
 nb_chunks = j        
-train = train[:nb_chunks];
-print("after mean_thresh removal: ", nb_chunks, train.shape)
+features_chunks = features_chunks[:nb_chunks]
+amp_sparse_chunks = amp_sparse_chunks[:nb_chunks]
+print("after mean_thresh removal: ", nb_chunks, features_chunks.shape)
 
+'''
 # Optional mean removal of each chunk
 if args.mean:
     train_mean = np.zeros(nb_chunks)
     for i in range(nb_chunks):
-        train_mean[i] = np.mean(train[i])
-        train[i] -= train_mean[i]
+        train_mean[i] = np.mean(features_chunks[i])
+        features_train[i] -= train_mean[i]
+        amp_sparse_chunks -= train_mean[i]
 else:
     # remove global mean
     mean = np.mean(features)
-    train -= mean
-    print("mean", mean)
+    print("global mean", mean)
+    features_chunks -= mean
+    amp_sparse_chunks -= mean
     train_mean = mean*np.ones(nb_chunks)
- 
 '''
-
 # scale magnitude of training data to get std dev around 1 ish (adjusted by experiment)
 features_chunks *= train_scale
 amp_sparse_chunks *= train_scale
-print("std",np.std(features_chunks), np.std(amp_sparse_chunks))
+print("std", np.std(features_chunks), np.std(amp_sparse_chunks))
 
 # The target we wish the network to generate is the "inner" nb_timesteps samples
 amp_sparse_chunks_target=amp_sparse_chunks[:,1:nb_timesteps+1,:]
@@ -201,6 +204,9 @@ vq_weights = vqvae.get_layer('vq1').get_vq()
 # For testing prediction we need to align with other codec2 information, so arrange in
 # sequential overlapping chunks
 
+# subset to save time
+nb_samples = min(nb_samples,10000)
+
 nb_chunks = int(nb_samples/nb_timesteps)
 features_chunks = np.zeros((nb_chunks, nb_timesteps+2, nb_features));
 features_chunks[0,1:] = features[0:nb_timesteps+1]
@@ -208,6 +214,7 @@ for i in range(1,nb_chunks-1):
     features_chunks[i] = features[i*nb_timesteps-1:(i+1)*nb_timesteps+1]
 features_chunks *= train_scale    
 print("features_chunks", features_chunks.shape)    
+print("testing prediction ...")
 
 amp_sparse_chunks_est = vqvae.predict(features_chunks, batch_size=batch_size)
 encoder_out = encoder.predict(features_chunks, batch_size=batch_size)
@@ -231,11 +238,7 @@ plt.show(block=False)
 
 # Calculate total mean square error and mse per frame
 
-# extract amplitudes from sparse vector and estimate 
-# quantisation error.  The MSE is the spectral distortion, which
-# includes a DC term (fixed gain error).  The variance of the error
-# is a better measure of the error in spectral shape.
-
+print("measure MSE ...")
 msepf = np.zeros(nb_samples)
 A_dB = np.zeros((nb_samples,max_amp));
 A_est_dB = np.zeros((nb_samples,max_amp));
@@ -276,12 +279,10 @@ plt.title('Vector Usage Counts for Stage 1')
 print(count)
 plt.show(block=False)
 
-'''
 plt.figure(6)
-plt.hist(train_mean_orig, bins='fd')
+plt.hist(mean_orig, bins='fd')
 plt.show(block=False)
 plt.title('Mean of each chunk')
-'''
 
 fig,ax = plt.subplots()
 encoder_pca=find_pca(encoder_out)
