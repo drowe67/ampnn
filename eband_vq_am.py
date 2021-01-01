@@ -38,7 +38,7 @@ N                = 80
 
 parser = argparse.ArgumentParser(description='Two stage VQ-VAE of rate K vectors, rate L output')
 parser.add_argument('featurefile', help='f32 file of spectral mag vectors in dB, e.g. 10*log10(energy)')
-parser.add_argument('modelfile', help='Codec 2 model records with rate L vectors')
+parser.add_argument('sparsefile', help='f32 file of sparse spectral mag vectors in dB')
 parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs')
 parser.add_argument('--eband_K', type=int, default=14, help='width of each spectral mag vector')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of spectral mag vectors to train on')
@@ -68,24 +68,13 @@ features = np.clip(features,0,None); # no crazy low values
 features = features[:nb_samples*eband_K].reshape((nb_samples, eband_K))
 print("features: ", features.shape);
 
-# read in model file records and set up sparse rate L vectors --------------------
+# read in sparse records ---------------------------------------------------------
 
-Wo, L, A, phase, voiced = codec2_model.read(args.modelfile, args.nb_samples)
-assert(Wo.shape[0] >= nb_samples);
-
-# Avoid harmonics above Fcutoff, as anti-alising filters tend to
-# produce very small values that don't affect speech but contribute
-# greatly to error
-for f in range(nb_samples):
-   L[f] = round(L[f]*((Fs/2)-Fcutoff)/(Fs/2))
-
-# set up sparse amp output vectors
-print("building sparse output vecs...")
-amp_sparse = np.zeros((nb_samples, width))
-for i in range(nb_samples):
-    for m in range(1,L[i]+1):
-        bin = int(np.round(m*Wo[i]*width/np.pi)); bin = min(width-1, bin)
-        amp_sparse[i,bin] = 20*np.log10(A[i,m])
+amp_sparse = np.fromfile(args.sparsefile, dtype='float32', count = nb_samples*(width+2))
+amp_sparse = amp_sparse.reshape(nb_samples,width+2)
+Wo = amp_sparse[:,width]
+L = amp_sparse[:,width+1].astype('int')
+amp_sparse = amp_sparse[:,:width]
 
 print("amp_sparse:", amp_sparse.shape);
 
@@ -162,7 +151,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
 
 vqvae,encoder = vqvae_rate_K_L(nb_timesteps, nb_features, dim, args.nb_embedding, width)
 vqvae.summary()
-quit()
+
 
 '''
 # ability to set up a custom loss function that weights most important parts of speech
@@ -308,13 +297,6 @@ plt.close('all')
 
 # VQ Pager ----------------------------------------------------
 
-# synthesise time domain signal
-def sample_time(r, A):
-    s = np.zeros(2*N);
-    for m in range(1,L[r]+1):
-        s = s + A[m]*np.cos(m*Wo[r]*range(-N,N) + phase[r,m])
-    return s
-
 frame = np.array(args.frame,dtype=int)
 nb_plots = 8
 nb_plotsy = np.floor(np.sqrt(nb_plots)); nb_plotsx=nb_plots/nb_plotsy;
@@ -333,26 +315,6 @@ while key != 'q':
         t = "f: %d %3.1f" % (f, a_mse)
         plt.title(t)
         plt.ylim(0,80)
-    plt.show(block=False)
-
-    plt.figure(8)
-    plt.clf()
-    plt.title('Time Domain')
-    mx = 0
-    s = np.zeros((nb_plots, 2*N))
-    for r in range(nb_plots):
-        f = frame + r;
-        s[r,:] = sample_time(f, 10**(A_est_dB[f,:]/20))
-        if np.max(np.abs(s)) > mx:
-            mx = np.max(np.abs(s))
-    mx = 1000*np.ceil(mx/1000)
-    for r in range(nb_plots):
-        plt.subplot(nb_plotsy,nb_plotsx,r+1)
-        f = frame+r;
-        s_est = sample_time(f, 10**(A_est_dB[f,:]/20))
-        plt.plot(range(-N,N),s[r,:],'g')
-        plt.plot(range(-N,N),s_est,'r') 
-        plt.ylim(-mx,mx)
     plt.show(block=False)
 
     plt.pause(0.0001)
