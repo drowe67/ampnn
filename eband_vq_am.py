@@ -112,26 +112,27 @@ features_chunks = features_chunks[:nb_chunks]
 amp_sparse_chunks = amp_sparse_chunks[:nb_chunks]
 print("after mean_thresh removal: ", nb_chunks, features_chunks.shape)
 
-'''
 # Optional mean removal of each chunk
 if args.mean:
-    train_mean = np.zeros(nb_chunks)
     for i in range(nb_chunks):
-        train_mean[i] = np.mean(features_chunks[i])
-        features_train[i] -= train_mean[i]
-        amp_sparse_chunks -= train_mean[i]
+        mean = np.mean(features_chunks[i])
+        features_chunks[i] -= mean
+        for j in range(nb_timesteps+2):
+           ind = np.nonzero(amp_sparse_chunks[i,j])
+           amp_sparse_chunks[i,j,ind] -= mean
 else:
     # remove global mean
     mean = np.mean(features)
     print("global mean", mean)
     features_chunks -= mean
-    amp_sparse_chunks -= mean
-    train_mean = mean*np.ones(nb_chunks)
-'''
+    ind = np.nonzero(amp_sparse_chunks)
+    amp_sparse_chunks[ind] -= mean
+
 # scale magnitude of training data to get std dev around 1 ish (adjusted by experiment)
 features_chunks *= train_scale
 amp_sparse_chunks *= train_scale
-print("std", np.std(features_chunks), np.std(amp_sparse_chunks))
+print("std", np.std(features_chunks))
+print("mean", np.mean(features_chunks))
 
 # The target we wish the network to generate is the "inner" nb_timesteps samples
 amp_sparse_chunks_target=amp_sparse_chunks[:,1:nb_timesteps+1,:]
@@ -210,9 +211,12 @@ nb_samples = min(nb_samples,10000)
 nb_chunks = int(nb_samples/nb_timesteps)
 features_chunks = np.zeros((nb_chunks, nb_timesteps+2, nb_features));
 features_chunks[0,1:] = features[0:nb_timesteps+1]
+mean_chunks = np.zeros(nb_chunks)
 for i in range(1,nb_chunks-1):
     features_chunks[i] = features[i*nb_timesteps-1:(i+1)*nb_timesteps+1]
-features_chunks *= train_scale    
+    mean_chunks[i] = np.mean(features_chunks[i])
+    features_chunks[i] -= mean_chunks[i]
+features_chunks = features_chunks*train_scale    
 print("features_chunks", features_chunks.shape)    
 print("testing prediction ...")
 
@@ -220,7 +224,9 @@ amp_sparse_chunks_est = vqvae.predict(features_chunks, batch_size=batch_size)
 encoder_out = encoder.predict(features_chunks, batch_size=batch_size)
 
 # convert output to original shape and dB
-amp_sparse_est = amp_sparse_chunks_est.reshape(-1, width)/train_scale
+for i in range(1,nb_chunks-1):
+   amp_sparse_chunks_est[i] = amp_sparse_chunks_est[i]/train_scale + mean_chunks[i]
+amp_sparse_est = amp_sparse_chunks_est.reshape(-1, width)
 encoder_out = encoder_out.reshape(-1, dim)
 nb_samples = amp_sparse_est.shape[0]
 

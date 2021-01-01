@@ -54,13 +54,8 @@ def vqvae_rate_K_L(nb_timesteps, nb_features, dim, num_embedding, width):
     p = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same', name="conv1d_c")(z_q_)    
     p = tf.keras.layers.UpSampling1D(size=2)(p)
     p = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='same', name="conv1d_d")(p)
-    p = tf.keras.layers.Conv1D(nb_features, 3, padding='same', name="conv1d_e")(p)
-
-    # rate K -> rate L
-    p1 = tf.keras.layers.Dense(2*nb_features, activation='relu')(p)
-    p1 = tf.keras.layers.Dense(2*nb_features, activation='relu')(p1)
-    w = tf.keras.layers.Dense(width, activation='relu')(p1)
-    w = tf.keras.layers.Dense(width)(w)
+    p = tf.keras.layers.Conv1D(width, 1, activation='tanh', padding='same', name="conv1d_e")(p)
+    w = tf.keras.layers.Conv1D(width, 1, padding='same', name="conv1d_f")(p)
 
     vqvae = tf.keras.Model(x, w)
     encoder = tf.keras.Model(x, z_e)
