@@ -44,7 +44,7 @@ parser.add_argument('--epochs', type=int, default=5, help='Number of training ep
 parser.add_argument('--eband_K', type=int, default=14, help='width of each spectral mag vector')
 parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of spectral mag vectors to train on')
 parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of embedding vectors (VQ dimension)')
-parser.add_argument('--nb_embedding', type=int, default=127, help='number of embedded vectors (VQ size)')
+parser.add_argument('--nb_embedding', type=int, default=128, help='number of embedded vectors (VQ size)')
 parser.add_argument('--scale', type=float, default=0.005,  help='apply this gain to features when read in')
 parser.add_argument('--nnout', type=str, help='Name of output NN we have trained (.npy format)')
 parser.add_argument('--mean', action='store_true', help='Extract mean from each chunk')
@@ -332,11 +332,15 @@ while key != 'q':
     plt.show(block=False)
 
     plt.pause(0.0001)
-    print("n-next b-back q-quit", end='\r', flush=True);
+    print("n-next b-back x-next50 z-back50 q-quit", end='\r', flush=True);
     key = getch.getch()
     if key == 'n':
         frame += nb_plots
     if key == 'b':
         frame -= nb_plots
+    if key == 'x':
+        frame += 50
+    if key == 'z':
+        frame -= 50
    
 plt.close()

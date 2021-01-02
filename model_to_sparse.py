@@ -33,7 +33,7 @@ nb_samples = args.nb_samples
 # read in Codec 2 model file records and set up sparse rate L vectors --------------------
 
 Wo, L, A, phase, voiced = codec2_model.read(args.modelfile, args.nb_samples)
-assert(Wo.shape[0] >= nb_samples);
+nb_samples = Wo.shape[0]
 
 # Avoid harmonics above Fcutoff, as anti-alising filters tend to
 # produce very small values that don't affect speech but contribute
