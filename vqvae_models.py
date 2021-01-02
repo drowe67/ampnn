@@ -1,5 +1,5 @@
 '''
-  Two stage VQ VAE for rate K quantisation
+  VQ VAE models
 '''
 
 import tensorflow as tf
@@ -53,11 +53,15 @@ def vqvae_rate_K_L(nb_timesteps, nb_features, dim, num_embedding, width):
     # Decoder
     p = tf.keras.layers.Conv1D(dim, 3, activation='tanh', padding='same', name="conv1d_c")(z_q_)    
     p = tf.keras.layers.UpSampling1D(size=2)(p)
-    p = tf.keras.layers.Conv1D(32, 3, activation='tanh', padding='same', name="conv1d_d")(p)
-    p = tf.keras.layers.Conv1D(width, 1, activation='tanh', padding='same', name="conv1d_e")(p)
-    w = tf.keras.layers.Conv1D(width, 1, padding='same', name="conv1d_f")(p)
 
-    vqvae = tf.keras.Model(x, w)
+    # Rate K to rate L
+    Wo = tf.keras.layers.Input(shape=(nb_timesteps,1), name='Wo_input')
+    w = tf.keras.layers.Concatenate(axis=2)([p, Wo])
+    w = tf.keras.layers.Dense(32, activation='tanh')(w)
+    w = tf.keras.layers.Dense(width, activation='tanh',)(w)
+    w = tf.keras.layers.Dense(width)(w)
+
+    vqvae = tf.keras.Model([x, Wo], w)
     encoder = tf.keras.Model(x, z_e)
     vqvae.add_loss(commitment_loss(z_e, z_q))
 

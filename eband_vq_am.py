@@ -20,7 +20,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
 logging.getLogger('tensorflow').setLevel(logging.FATAL)
 
 import tensorflow as tf
-from vqvae_twostage import *
+from vqvae_models import *
 from vqvae_util import *
 import codec2_model
 
@@ -84,7 +84,8 @@ print("amp_sparse:", amp_sparse.shape);
 
 features_chunks = features[:nb_samples,:].reshape(nb_chunks, nb_timesteps+2, eband_K)
 amp_sparse_chunks = amp_sparse[:nb_samples,:].reshape(nb_chunks, nb_timesteps+2, width)
-print("reshaped:", features_chunks.shape, amp_sparse_chunks.shape)
+Wo_chunks = Wo[:nb_samples].reshape(nb_chunks, nb_timesteps+2, 1)
+print("reshaped:", features_chunks.shape, amp_sparse_chunks.shape, Wo_chunks.shape)
 
 # Concatentate the training material with same sequence of frames at a
 # bunch of different time shifts, to increase the amount of training material
@@ -94,7 +95,9 @@ for i in range(1,nb_timesteps+2):
     features_chunks =  np.concatenate((features_chunks,features1))
     amp_sparse1 = amp_sparse[i:nb_samples-nb_timesteps-2+i,:].reshape(nb_chunks-1, nb_timesteps+2, width)
     amp_sparse_chunks =  np.concatenate((amp_sparse_chunks, amp_sparse1))
-print("concat timeshifts:", features_chunks.shape, amp_sparse_chunks.shape)
+    Wo1 = Wo[i:nb_samples-nb_timesteps-2+i].reshape(nb_chunks-1, nb_timesteps+2, 1)
+    Wo_chunks =  np.concatenate((Wo_chunks,Wo1))
+print("concat timeshifts:", features_chunks.shape, amp_sparse_chunks.shape, Wo_chunks.shape)
 nb_chunks = features_chunks.shape[0];
 
 
@@ -135,8 +138,10 @@ print("std", np.std(features_chunks))
 print("mean", np.mean(features_chunks))
 
 # The target we wish the network to generate is the "inner" nb_timesteps samples
-amp_sparse_chunks_target=amp_sparse_chunks[:,1:nb_timesteps+1,:]
-print("target: ", amp_sparse_chunks_target.shape)
+amp_sparse_chunks_target = amp_sparse_chunks[:,1:nb_timesteps+1,:]
+Wo_chunks_inner = Wo_chunks[:,1:nb_timesteps+1]
+#Wo_chunks_inner = np.zeros((nb_chunks, nb_timesteps))
+print("target: ", amp_sparse_chunks_target.shape, Wo_chunks_inner.shape)
 
 # Plot the VQ space as we train
 class CustomCallback(tf.keras.callbacks.Callback):
@@ -183,8 +188,9 @@ vq_initial = np.random.rand(args.nb_embedding,dim)*0.1 - 0.05
 vqvae.get_layer('vq1').set_vq(vq_initial)
 vqvae.get_layer('vq2').set_vq(vq_initial)
 
-history = vqvae.fit(features_chunks, amp_sparse_chunks_target, batch_size=batch_size, epochs=args.epochs,
+history = vqvae.fit([features_chunks, Wo_chunks_inner], amp_sparse_chunks_target, batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,callbacks=[CustomCallback()])
+
 '''
 # save_model() doesn't work for me so saving model the hard way ....
 if args.nnout is not None:
@@ -209,18 +215,19 @@ vq_weights = vqvae.get_layer('vq1').get_vq()
 nb_samples = min(nb_samples,10000)
 
 nb_chunks = int(nb_samples/nb_timesteps)
-features_chunks = np.zeros((nb_chunks, nb_timesteps+2, nb_features));
+features_chunks = np.zeros((nb_chunks, nb_timesteps+2, nb_features))
 features_chunks[0,1:] = features[0:nb_timesteps+1]
 mean_chunks = np.zeros(nb_chunks)
+Wo_chunks = np.zeros((nb_chunks, nb_timesteps, 1))
 for i in range(1,nb_chunks-1):
     features_chunks[i] = features[i*nb_timesteps-1:(i+1)*nb_timesteps+1]
     mean_chunks[i] = np.mean(features_chunks[i])
     features_chunks[i] -= mean_chunks[i]
+    Wo_chunks[i] = Wo[i*nb_timesteps:(i+1)*nb_timesteps].reshape(nb_timesteps,1);
 features_chunks = features_chunks*train_scale    
-print("features_chunks", features_chunks.shape)    
+print("prediction chunks", features_chunks.shape, Wo_chunks.shape)    
 print("testing prediction ...")
-
-amp_sparse_chunks_est = vqvae.predict(features_chunks, batch_size=batch_size)
+amp_sparse_chunks_est = vqvae.predict([features_chunks, Wo_chunks], batch_size=batch_size)
 encoder_out = encoder.predict(features_chunks, batch_size=batch_size)
 
 # convert output to original shape and dB
@@ -266,7 +273,7 @@ worst_mse = np.sort(-msepf);
 print(worst_fr[:10], worst_mse[:10]);
 
 plt.figure(3)
-plt.plot(msepf)
+plt.plot(reject_outliers(msepf))
 plt.title('Spectral Distortion dB*dB per frame')
 plt.show(block=False)
 
