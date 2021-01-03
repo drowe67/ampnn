@@ -46,7 +46,7 @@ parser.add_argument('--nb_samples', type=int, default=1000000, help='Number of s
 parser.add_argument('--embedding_dim', type=int, default=16,  help='dimension of embedding vectors (VQ dimension)')
 parser.add_argument('--nb_embedding', type=int, default=128, help='number of embedded vectors (VQ size)')
 parser.add_argument('--scale', type=float, default=0.005,  help='apply this gain to features when read in')
-parser.add_argument('--nnout', type=str, help='Name of output NN we have trained (.npy format)')
+parser.add_argument('--nnout', type=str, default="eband_vq_am.npy", help='Name of output NN we have trained (.npy format)')
 parser.add_argument('--mean', action='store_true', help='Extract mean from each chunk')
 parser.add_argument('--mean_thresh', type=float, default=0.0,  help='Discard chunks with less than this mean threshold')
 parser.add_argument('--narrowband', action='store_true', help='weighting function ignores the first and last two bands')
@@ -194,17 +194,19 @@ history = vqvae.fit([features_chunks, Wo_chunks_inner], amp_sparse_chunks_target
 
 # save_model() doesn't work for me so saving model the hard way ....
 if args.nnout is not None:
+    print("writing ",args.nnout)
     with open(args.nnout, 'wb') as f:
         np.save(f, vqvae.get_layer("conv1d_a").get_weights(), allow_pickle=True)
         np.save(f, vqvae.get_layer("conv1d_b").get_weights(), allow_pickle=True)
         np.save(f, vqvae.get_layer("vq1").get_vq(), allow_pickle=True)
         np.save(f, vqvae.get_layer("vq2").get_vq(), allow_pickle=True)
         np.save(f, vqvae.get_layer("conv1d_c").get_weights(), allow_pickle=True)
-        np.save(f, vqvae.get_layer("conv1d_d").get_weights(), allow_pickle=True)
-        np.save(f, vqvae.get_layer("conv1d_e").get_weights(), allow_pickle=True)
         np.save(f, vqvae.get_layer("dense1").get_weights(), allow_pickle=True)
         np.save(f, vqvae.get_layer("dense2").get_weights(), allow_pickle=True)
-        np.save(f, vqvae.get_layer("dense3").get_weights(), allow_pickle=True)
+        w = vqvae.get_layer("dense3").get_weights()
+        print("  dense3 ",len(w), w[0].shape, w[1].shape)
+        np.save(f, w[0], allow_pickle=True)
+        np.save(f, w[1], allow_pickle=True)
 
 vq_weights = vqvae.get_layer('vq1').get_vq()
           

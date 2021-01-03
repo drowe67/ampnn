@@ -57,9 +57,9 @@ def vqvae_rate_K_L(nb_timesteps, nb_features, dim, num_embedding, width):
     # Rate K to rate L
     Wo = tf.keras.layers.Input(shape=(nb_timesteps,1), name='Wo_input')
     w = tf.keras.layers.Concatenate(axis=2)([p, Wo])
-    w = tf.keras.layers.Dense(32, activation='tanh')(w)
-    w = tf.keras.layers.Dense(width, activation='tanh',)(w)
-    w = tf.keras.layers.Dense(width)(w)
+    w = tf.keras.layers.Dense(32, activation='tanh', name='dense1')(w)
+    w = tf.keras.layers.Dense(width, activation='tanh', name='dense2')(w)
+    w = tf.keras.layers.Dense(width, name='dense3')(w)
 
     vqvae = tf.keras.Model([x, Wo], w)
     encoder = tf.keras.Model(x, z_e)
