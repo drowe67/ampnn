@@ -37,7 +37,7 @@ N                = 80
 
 # Command line ----------------------------------------------
 
-parser = argparse.ArgumentParser(description='Two stage VQ-VAE of rate K vectors, rate L output')
+parser = argparse.ArgumentParser(description='Training two stage VQ-VAE of rate K vectors, rate L output')
 parser.add_argument('featurefile', help='f32 file of spectral mag vectors in dB, e.g. 10*log10(energy)')
 parser.add_argument('sparsefile', help='f32 file of sparse spectral mag vectors in dB')
 parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs')
@@ -117,6 +117,7 @@ print("after mean_thresh removal: ", nb_chunks, features_chunks.shape)
 
 # Optional mean removal of each chunk
 if args.mean:
+    print("mean removal of each chunk...")
     for i in range(nb_chunks):
         mean = np.mean(features_chunks[i])
         features_chunks[i] -= mean
@@ -191,7 +192,6 @@ vqvae.get_layer('vq2').set_vq(vq_initial)
 history = vqvae.fit([features_chunks, Wo_chunks_inner], amp_sparse_chunks_target, batch_size=batch_size, epochs=args.epochs,
                     validation_split=validation_split,callbacks=[CustomCallback()])
 
-'''
 # save_model() doesn't work for me so saving model the hard way ....
 if args.nnout is not None:
     with open(args.nnout, 'wb') as f:
@@ -202,7 +202,9 @@ if args.nnout is not None:
         np.save(f, vqvae.get_layer("conv1d_c").get_weights(), allow_pickle=True)
         np.save(f, vqvae.get_layer("conv1d_d").get_weights(), allow_pickle=True)
         np.save(f, vqvae.get_layer("conv1d_e").get_weights(), allow_pickle=True)
-'''
+        np.save(f, vqvae.get_layer("dense1").get_weights(), allow_pickle=True)
+        np.save(f, vqvae.get_layer("dense2").get_weights(), allow_pickle=True)
+        np.save(f, vqvae.get_layer("dense3").get_weights(), allow_pickle=True)
 
 vq_weights = vqvae.get_layer('vq1').get_vq()
           
@@ -217,11 +219,20 @@ nb_samples = min(nb_samples,10000)
 nb_chunks = int(nb_samples/nb_timesteps)
 features_chunks = np.zeros((nb_chunks, nb_timesteps+2, nb_features))
 features_chunks[0,1:] = features[0:nb_timesteps+1]
+
 mean_chunks = np.zeros(nb_chunks)
+gmean = np.mean(features[:nb_samples])
+if args.mean is False:
+    print("global mean: ", gmean)
+    
 Wo_chunks = np.zeros((nb_chunks, nb_timesteps, 1))
+
 for i in range(1,nb_chunks-1):
     features_chunks[i] = features[i*nb_timesteps-1:(i+1)*nb_timesteps+1]
-    mean_chunks[i] = np.mean(features_chunks[i])
+    if args.mean:
+        mean_chunks[i] = np.mean(features_chunks[i])
+    else:
+        mean_chunks[i] = gmean
     features_chunks[i] -= mean_chunks[i]
     Wo_chunks[i] = Wo[i*nb_timesteps:(i+1)*nb_timesteps].reshape(nb_timesteps,1);
 features_chunks = features_chunks*train_scale    
